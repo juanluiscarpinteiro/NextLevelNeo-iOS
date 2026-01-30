@@ -7,6 +7,9 @@ struct DeviceItem: Identifiable, Codable, Hashable {
     var deviceName: String      // Original device name from scanner
     var customName: String?     // User-customizable name
 
+    // Controller type (auto-detected from device name)
+    var controllerType: ControllerType = .sp105e
+
     // Last known state
     var lastBrightness: Int = 128
     var lastMode: Int = 1
@@ -32,10 +35,27 @@ struct DeviceItem: Identifiable, Codable, Hashable {
         (lastRed, lastGreen, lastBlue)
     }
 
+    /// Get the appropriate protocol for this device
+    var ledProtocol: LEDProtocol {
+        LEDProtocolFactory.protocolFor(type: controllerType)
+    }
+
+    /// Check if this device supports effect modes
+    var supportsEffectModes: Bool {
+        controllerType == .sp105e
+    }
+
+    /// Check if this device supports speed control
+    var supportsSpeedControl: Bool {
+        controllerType == .sp105e
+    }
+
     init(address: String, deviceName: String, customName: String? = nil) {
         self.address = address
         self.deviceName = deviceName
         self.customName = customName
+        // Auto-detect controller type from device name
+        self.controllerType = LEDProtocolFactory.detectControllerType(deviceName: deviceName)
     }
 
     // Helper to pack RGB into single Int

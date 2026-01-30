@@ -16,9 +16,11 @@ class GroupConnectionManager: NSObject, ObservableObject {
 
     private var centralManager: CBCentralManager!
     private var peripherals: [String: CBPeripheral] = [:]        // identifier -> peripheral
-    private var characteristics: [String: CBCharacteristic] = [] // identifier -> write characteristic
+    private var characteristics: [String: CBCharacteristic] = [:] // identifier -> write characteristic
+    private var deviceProtocols: [String: LEDProtocol] = [:]     // identifier -> protocol
+    private var deviceTypes: [String: ControllerType] = [:]      // identifier -> controller type
     private var pendingConnections: [CBPeripheral] = []
-    private var connectionDelayMs: Double = 200  // Delay between connection attempts
+    private var connectionDelayMs: Double = 300  // Delay between connection attempts (increased for reliability)
     private var commandDelayMs: Double = 50      // Delay between sending to each device
 
     // MARK: - Initialization
@@ -37,9 +39,14 @@ class GroupConnectionManager: NSObject, ObservableObject {
         totalCount = devices.count
         connectedCount = 0
 
-        // Initialize connection states
+        // Initialize connection states and protocols
         for device in devices {
             connectionStates[device.address] = .disconnected
+            // Re-detect controller type (in case device was saved with wrong type)
+            let detectedType = LEDProtocolFactory.detectControllerType(deviceName: device.deviceName)
+            deviceTypes[device.address] = detectedType
+            deviceProtocols[device.address] = LEDProtocolFactory.protocolFor(type: detectedType)
+            print("[GroupManager] Device \(device.displayName) using \(deviceProtocols[device.address]?.name ?? "unknown") protocol")
         }
 
         // Find matching peripherals and queue for connection
@@ -65,6 +72,8 @@ class GroupConnectionManager: NSObject, ObservableObject {
         peripherals.removeAll()
         characteristics.removeAll()
         connectionStates.removeAll()
+        deviceProtocols.removeAll()
+        deviceTypes.removeAll()
         connectedCount = 0
         totalCount = 0
     }
@@ -74,7 +83,35 @@ class GroupConnectionManager: NSObject, ObservableObject {
         connectedCount > 0
     }
 
-    /// Send command to all connected devices
+    /// Send command to all connected devices (protocol-specific)
+    /// Uses commandGenerator to create appropriate command for each device's protocol
+    func sendProtocolCommandToAll(_ commandGenerator: (LEDProtocol) -> Data?) {
+        var delay: Double = 0
+
+        for (identifier, characteristic) in characteristics {
+            guard let peripheral = peripherals[identifier],
+                  let deviceProtocol = deviceProtocols[identifier],
+                  connectionStates[identifier] == .connected else { continue }
+
+            let deviceType = deviceTypes[identifier] ?? .sp105e
+            let writeType: CBCharacteristicWriteType = deviceProtocol.usesWriteWithoutResponse ? .withoutResponse : .withResponse
+
+            // Generate command for this device's protocol
+            guard let command = commandGenerator(deviceProtocol) else {
+                print("[GroupManager] Command not supported by \(deviceProtocol.name)")
+                continue
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay / 1000) {
+                let hexString = command.map { String(format: "%02X", $0) }.joined(separator: " ")
+                print("[GroupManager] Sending to \(peripheral.name ?? "Unknown") (\(deviceProtocol.name)): \(hexString)")
+                peripheral.writeValue(command, for: characteristic, type: writeType)
+            }
+            delay += commandDelayMs
+        }
+    }
+
+    /// Send same raw command to all devices (legacy, for backward compatibility)
     func sendCommandToAll(_ data: Data) {
         var delay: Double = 0
 
@@ -82,41 +119,87 @@ class GroupConnectionManager: NSObject, ObservableObject {
             guard let peripheral = peripherals[identifier],
                   connectionStates[identifier] == .connected else { continue }
 
+            let deviceProtocol = deviceProtocols[identifier]
+            let writeType: CBCharacteristicWriteType = (deviceProtocol?.usesWriteWithoutResponse ?? false) ? .withoutResponse : .withResponse
+
             DispatchQueue.main.asyncAfter(deadline: .now() + delay / 1000) {
-                peripheral.writeValue(data, for: characteristic, type: .withResponse)
+                peripheral.writeValue(data, for: characteristic, type: writeType)
             }
             delay += commandDelayMs
         }
     }
 
-    // MARK: - Convenience Command Methods
+    // MARK: - Convenience Command Methods (Protocol-aware)
 
     func setColor(red: Int, green: Int, blue: Int) {
-        sendCommandToAll(SP105EProtocol.setColor(red: UInt8(red), green: UInt8(green), blue: UInt8(blue)))
+        sendProtocolCommandToAll { protocol in
+            protocol.setColor(red: UInt8(red), green: UInt8(green), blue: UInt8(blue))
+        }
     }
 
     func setMode(_ mode: Int) {
-        sendCommandToAll(SP105EProtocol.setMode(mode))
+        sendProtocolCommandToAll { protocol in
+            protocol.setMode(mode)
+        }
     }
 
     func increaseBrightness() {
-        sendCommandToAll(SP105EProtocol.brightnessUp)
+        sendProtocolCommandToAll { protocol in
+            protocol.brightnessUp()
+        }
     }
 
     func decreaseBrightness() {
-        sendCommandToAll(SP105EProtocol.brightnessDown)
+        sendProtocolCommandToAll { protocol in
+            protocol.brightnessDown()
+        }
+    }
+
+    /// Set absolute brightness for all devices (BanlanX uses absolute, SP105E uses step-based)
+    func setBrightnessAbsolute(_ brightness: Int, lastBrightness: Int) {
+        sendProtocolCommandToAll { protocol in
+            if let banlanx = protocol as? BanlanXProtocol {
+                return banlanx.setBrightnessAbsolute(brightness)
+            } else {
+                // SP105E uses step-based
+                if brightness > lastBrightness {
+                    return protocol.brightnessUp()
+                } else if brightness < lastBrightness {
+                    return protocol.brightnessDown()
+                }
+                return nil
+            }
+        }
     }
 
     func increaseSpeed() {
-        sendCommandToAll(SP105EProtocol.speedUp)
+        sendProtocolCommandToAll { protocol in
+            protocol.speedUp()
+        }
     }
 
     func decreaseSpeed() {
-        sendCommandToAll(SP105EProtocol.speedDown)
+        sendProtocolCommandToAll { protocol in
+            protocol.speedDown()
+        }
     }
 
     func togglePower() {
-        sendCommandToAll(SP105EProtocol.togglePower)
+        sendProtocolCommandToAll { protocol in
+            protocol.powerToggle()
+        }
+    }
+
+    func powerOn() {
+        sendProtocolCommandToAll { protocol in
+            protocol.powerOn()
+        }
+    }
+
+    func powerOff() {
+        sendProtocolCommandToAll { protocol in
+            protocol.powerOff()
+        }
     }
 
     // MARK: - Private Methods
@@ -161,7 +244,7 @@ extension GroupConnectionManager: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         print("Group: Connected to \(peripheral.name ?? "Unknown")")
-        peripheral.discoverServices([SP105EProtocol.serviceUUID])
+        peripheral.discoverServices([LEDProtocolFactory.serviceUUID])
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
@@ -189,15 +272,17 @@ extension GroupConnectionManager: CBPeripheralDelegate {
         if let error = error {
             print("Group: Service discovery failed for \(peripheral.name ?? "Unknown"): \(error)")
             connectionStates[identifier] = .failed("Service discovery failed")
+            updateConnectedCount()
             return
         }
 
-        guard let service = peripheral.services?.first(where: { $0.uuid == SP105EProtocol.serviceUUID }) else {
+        guard let service = peripheral.services?.first(where: { $0.uuid == LEDProtocolFactory.serviceUUID }) else {
             connectionStates[identifier] = .failed("LED service not found")
+            updateConnectedCount()
             return
         }
 
-        peripheral.discoverCharacteristics([SP105EProtocol.characteristicUUID], for: service)
+        peripheral.discoverCharacteristics([LEDProtocolFactory.characteristicUUID], for: service)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
@@ -206,18 +291,21 @@ extension GroupConnectionManager: CBPeripheralDelegate {
         if let error = error {
             print("Group: Characteristic discovery failed: \(error)")
             connectionStates[identifier] = .failed("Characteristic not found")
+            updateConnectedCount()
             return
         }
 
-        guard let characteristic = service.characteristics?.first(where: { $0.uuid == SP105EProtocol.characteristicUUID }) else {
+        guard let characteristic = service.characteristics?.first(where: { $0.uuid == LEDProtocolFactory.characteristicUUID }) else {
             connectionStates[identifier] = .failed("LED characteristic not found")
+            updateConnectedCount()
             return
         }
 
         characteristics[identifier] = characteristic
         connectionStates[identifier] = .connected
         updateConnectedCount()
-        print("Group: \(peripheral.name ?? "Unknown") ready!")
+        let protocolName = deviceProtocols[identifier]?.name ?? "Unknown"
+        print("Group: \(peripheral.name ?? "Unknown") ready with \(protocolName) protocol!")
     }
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {

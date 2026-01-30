@@ -178,7 +178,7 @@ struct DeviceControlView: View {
 
             Divider().background(Color.gray)
 
-            // Mode Selection
+            // Mode Selection (grayed out for BanlanX)
             modeSection
 
             Divider().background(Color.gray)
@@ -186,10 +186,11 @@ struct DeviceControlView: View {
             // Brightness
             brightnessSection
 
-            Divider().background(Color.gray)
-
-            // Speed
-            speedSection
+            // Speed (only for SP105E - has effect modes)
+            if device.supportsSpeedControl {
+                Divider().background(Color.gray)
+                speedSection
+            }
         }
         .padding()
         .background(Color(hex: "252525"))
@@ -266,20 +267,29 @@ struct DeviceControlView: View {
 
     private var modeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("EFFECT MODE")
-                .font(.caption.bold())
-                .foregroundColor(.white)
-                .tracking(1)
+            HStack {
+                Text("EFFECT MODE")
+                    .font(.caption.bold())
+                    .foregroundColor(device.supportsEffectModes ? .white : .gray)
+                    .tracking(1)
+
+                if !device.supportsEffectModes {
+                    Text("(Not available for this controller)")
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                }
+            }
 
             HStack {
                 Button(action: previousMode) {
                     Image(systemName: "chevron.left")
                         .font(.title2.bold())
                         .frame(width: 50, height: 50)
-                        .background(Color.orange)
+                        .background(device.supportsEffectModes ? Color.orange : Color.gray.opacity(0.5))
                         .foregroundColor(.white)
                         .cornerRadius(8)
                 }
+                .disabled(!device.supportsEffectModes)
 
                 Picker("Mode", selection: $selectedMode) {
                     ForEach(0..<SP105EProtocol.modeNames.count, id: \.self) { index in
@@ -289,10 +299,12 @@ struct DeviceControlView: View {
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity)
                 .frame(height: 50)
-                .background(Color(hex: "3a3a3a"))
+                .background(device.supportsEffectModes ? Color(hex: "3a3a3a") : Color(hex: "2a2a2a"))
                 .cornerRadius(8)
+                .disabled(!device.supportsEffectModes)
+                .opacity(device.supportsEffectModes ? 1.0 : 0.5)
                 .onChange(of: selectedMode) { _, newValue in
-                    if newValue > 0 {
+                    if newValue > 0 && device.supportsEffectModes {
                         bleManager.setMode(newValue)
                     }
                 }
@@ -301,10 +313,11 @@ struct DeviceControlView: View {
                     Image(systemName: "chevron.right")
                         .font(.title2.bold())
                         .frame(width: 50, height: 50)
-                        .background(Color.orange)
+                        .background(device.supportsEffectModes ? Color.orange : Color.gray.opacity(0.5))
                         .foregroundColor(.white)
                         .cornerRadius(8)
                 }
+                .disabled(!device.supportsEffectModes)
             }
         }
     }
@@ -330,8 +343,11 @@ struct DeviceControlView: View {
 
                 Slider(value: $brightness, in: 0...255, step: 1)
                     .tint(.orange)
-                    .onChange(of: brightness) { _, _ in
-                        // Will be sent on release
+                    .onChange(of: brightness) { oldValue, newValue in
+                        // For BanlanX, send absolute brightness on slider change
+                        if device.controllerType == .banlanX {
+                            bleManager.setBrightnessAbsolute(Int(newValue))
+                        }
                     }
 
                 Button(action: increaseBrightness) {
@@ -470,12 +486,20 @@ struct DeviceControlView: View {
 
     private func increaseBrightness() {
         brightness = min(255, brightness + 25)
-        bleManager.increaseBrightness()
+        if device.controllerType == .banlanX {
+            bleManager.setBrightnessAbsolute(Int(brightness))
+        } else {
+            bleManager.increaseBrightness()
+        }
     }
 
     private func decreaseBrightness() {
         brightness = max(0, brightness - 25)
-        bleManager.decreaseBrightness()
+        if device.controllerType == .banlanX {
+            bleManager.setBrightnessAbsolute(Int(brightness))
+        } else {
+            bleManager.decreaseBrightness()
+        }
     }
 
     private func increaseSpeed() {

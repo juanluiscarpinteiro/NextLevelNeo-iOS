@@ -20,6 +20,14 @@ class BLEManager: NSObject, ObservableObject {
     @Published var connectionState: ConnectionState = .disconnected
     @Published var discoveredPeripherals: [CBPeripheral] = []
 
+    // MARK: - Protocol Properties
+
+    /// Current device's protocol (auto-detected on connection)
+    private(set) var currentProtocol: LEDProtocol = SP105EProtocolImpl()
+
+    /// Current device's controller type
+    private(set) var controllerType: ControllerType = .sp105e
+
     // MARK: - Private Properties
 
     private var centralManager: CBCentralManager!
@@ -28,8 +36,8 @@ class BLEManager: NSObject, ObservableObject {
     private var lastCommandTime: Date = .distantPast
     private let commandThrottleMs: Double = 50  // Minimum ms between commands
 
-    // Device name filters (same as Android)
-    private let deviceNameFilters = ["SP105E", "SP110E", "SP100", "LED", "Magic"]
+    // Device name filters - includes BanlanX (SP63x/SP64x)
+    private let deviceNameFilters = ["SP105E", "SP110E", "SP100", "SP63", "SP64", "LED", "Magic"]
 
     // MARK: - Initialization
 
@@ -109,38 +117,91 @@ class BLEManager: NSObject, ObservableObject {
     }
 
     private func doSendCommand(peripheral: CBPeripheral, characteristic: CBCharacteristic, data: Data) {
-        peripheral.writeValue(data, for: characteristic, type: .withResponse)
+        // Use correct write type based on protocol
+        // SP105E uses .withResponse, BanlanX uses .withoutResponse
+        let writeType: CBCharacteristicWriteType = currentProtocol.usesWriteWithoutResponse ? .withoutResponse : .withResponse
+
+        // Log command for debugging
+        let hexString = data.map { String(format: "%02X", $0) }.joined(separator: " ")
+        print("[LED_CMD] Sending (\(currentProtocol.name), type=\(controllerType.rawValue)): \(hexString)")
+
+        peripheral.writeValue(data, for: characteristic, type: writeType)
         lastCommandTime = Date()
+    }
+
+    /// Set the protocol for the current device
+    func setProtocol(for device: DeviceItem) {
+        self.controllerType = device.controllerType
+        self.currentProtocol = device.ledProtocol
+        print("[BLEManager] Protocol set to \(currentProtocol.name) for \(device.displayName)")
     }
 
     // MARK: - Convenience Command Methods
 
     func setColor(red: Int, green: Int, blue: Int) {
-        sendCommand(SP105EProtocol.setColor(red: UInt8(red), green: UInt8(green), blue: UInt8(blue)))
+        sendCommand(currentProtocol.setColor(red: UInt8(red), green: UInt8(green), blue: UInt8(blue)))
     }
 
     func setMode(_ mode: Int) {
-        sendCommand(SP105EProtocol.setMode(mode))
+        if let data = currentProtocol.setMode(mode) {
+            sendCommand(data)
+        } else {
+            print("[BLEManager] Mode not supported by \(currentProtocol.name)")
+        }
     }
 
     func increaseBrightness() {
-        sendCommand(SP105EProtocol.brightnessUp)
+        if let data = currentProtocol.brightnessUp() {
+            sendCommand(data)
+        } else {
+            print("[BLEManager] Brightness up not supported by \(currentProtocol.name)")
+        }
     }
 
     func decreaseBrightness() {
-        sendCommand(SP105EProtocol.brightnessDown)
+        if let data = currentProtocol.brightnessDown() {
+            sendCommand(data)
+        } else {
+            print("[BLEManager] Brightness down not supported by \(currentProtocol.name)")
+        }
+    }
+
+    /// Set brightness using absolute value (0-255) - for BanlanX
+    func setBrightnessAbsolute(_ brightness: Int) {
+        if let banlanx = currentProtocol as? BanlanXProtocol {
+            sendCommand(banlanx.setBrightnessAbsolute(brightness))
+        } else {
+            // For SP105E, use step-based brightness
+            print("[BLEManager] Absolute brightness not supported by \(currentProtocol.name)")
+        }
     }
 
     func increaseSpeed() {
-        sendCommand(SP105EProtocol.speedUp)
+        if let data = currentProtocol.speedUp() {
+            sendCommand(data)
+        } else {
+            print("[BLEManager] Speed up not supported by \(currentProtocol.name)")
+        }
     }
 
     func decreaseSpeed() {
-        sendCommand(SP105EProtocol.speedDown)
+        if let data = currentProtocol.speedDown() {
+            sendCommand(data)
+        } else {
+            print("[BLEManager] Speed down not supported by \(currentProtocol.name)")
+        }
     }
 
     func togglePower() {
-        sendCommand(SP105EProtocol.togglePower)
+        sendCommand(currentProtocol.powerToggle())
+    }
+
+    func powerOn() {
+        sendCommand(currentProtocol.powerOn())
+    }
+
+    func powerOff() {
+        sendCommand(currentProtocol.powerOff())
     }
 
     // MARK: - Private Helpers
@@ -149,11 +210,13 @@ class BLEManager: NSObject, ObservableObject {
         connectedPeripheral = nil
         writeCharacteristic = nil
         connectionState = .disconnected
+        // Reset to default protocol
+        controllerType = .sp105e
+        currentProtocol = SP105EProtocolImpl()
     }
 
     private func isLEDController(name: String?) -> Bool {
-        guard let name = name else { return false }
-        return deviceNameFilters.contains { name.contains($0) }
+        return LEDProtocolFactory.isSupported(deviceName: name)
     }
 }
 
@@ -196,7 +259,11 @@ extension BLEManager: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         print("Connected to \(peripheral.name ?? "Unknown")")
-        peripheral.discoverServices([SP105EProtocol.serviceUUID])
+        // Auto-detect controller type from device name
+        controllerType = LEDProtocolFactory.detectControllerType(deviceName: peripheral.name)
+        currentProtocol = LEDProtocolFactory.protocolFor(type: controllerType)
+        print("[BLEManager] Using protocol: \(currentProtocol.name)")
+        peripheral.discoverServices([LEDProtocolFactory.serviceUUID])
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
@@ -221,13 +288,13 @@ extension BLEManager: CBPeripheralDelegate {
             return
         }
 
-        guard let service = peripheral.services?.first(where: { $0.uuid == SP105EProtocol.serviceUUID }) else {
+        guard let service = peripheral.services?.first(where: { $0.uuid == LEDProtocolFactory.serviceUUID }) else {
             print("LED service not found")
             connectionState = .failed("LED service not found")
             return
         }
 
-        peripheral.discoverCharacteristics([SP105EProtocol.characteristicUUID], for: service)
+        peripheral.discoverCharacteristics([LEDProtocolFactory.characteristicUUID], for: service)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
@@ -237,7 +304,7 @@ extension BLEManager: CBPeripheralDelegate {
             return
         }
 
-        guard let characteristic = service.characteristics?.first(where: { $0.uuid == SP105EProtocol.characteristicUUID }) else {
+        guard let characteristic = service.characteristics?.first(where: { $0.uuid == LEDProtocolFactory.characteristicUUID }) else {
             print("LED characteristic not found")
             connectionState = .failed("LED characteristic not found")
             return
@@ -245,7 +312,7 @@ extension BLEManager: CBPeripheralDelegate {
 
         writeCharacteristic = characteristic
         connectionState = .connected
-        print("Ready to send commands!")
+        print("Ready to send commands with \(currentProtocol.name) protocol!")
     }
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {

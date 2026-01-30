@@ -14,6 +14,7 @@ struct GroupControlView: View {
     @State private var currentGreen: Double = 255
     @State private var currentBlue: Double = 255
     @State private var brightness: Double = 128
+    @State private var lastBrightness: Int = 128
     @State private var speed: Double = 128
     @State private var selectedMode: Int = 0
     @State private var isPowerOn = true
@@ -358,6 +359,11 @@ struct GroupControlView: View {
 
                 Slider(value: $brightness, in: 0...255, step: 1)
                     .tint(.orange)
+                    .onChange(of: brightness) { oldValue, newValue in
+                        // Send brightness to all devices (handles both BanlanX and SP105E)
+                        groupManager.setBrightnessAbsolute(Int(newValue), lastBrightness: lastBrightness)
+                        lastBrightness = Int(newValue)
+                    }
 
                 Button(action: increaseBrightness) {
                     Text("+")
@@ -454,13 +460,17 @@ struct GroupControlView: View {
     }
 
     private func increaseBrightness() {
+        let oldBrightness = Int(brightness)
         brightness = min(255, brightness + 25)
-        groupManager.increaseBrightness()
+        groupManager.setBrightnessAbsolute(Int(brightness), lastBrightness: oldBrightness)
+        lastBrightness = Int(brightness)
     }
 
     private func decreaseBrightness() {
+        let oldBrightness = Int(brightness)
         brightness = max(0, brightness - 25)
-        groupManager.decreaseBrightness()
+        groupManager.setBrightnessAbsolute(Int(brightness), lastBrightness: oldBrightness)
+        lastBrightness = Int(brightness)
     }
 
     private func increaseSpeed() {

@@ -1,11 +1,65 @@
 import Foundation
 import CoreBluetooth
 
-/// SP105E LED Controller Protocol
+/// SP105E LED Controller Protocol Implementation
+/// Conforms to LEDProtocol interface for multi-protocol support
+struct SP105EProtocolImpl: LEDProtocol {
+
+    var name: String { "SP105E" }
+
+    /// SP105E uses write with response
+    var usesWriteWithoutResponse: Bool { false }
+
+    func powerOn() -> Data {
+        return powerToggle()
+    }
+
+    func powerOff() -> Data {
+        return powerToggle()
+    }
+
+    func powerToggle() -> Data {
+        return SP105EProtocol.togglePower
+    }
+
+    func setColor(red: UInt8, green: UInt8, blue: UInt8) -> Data {
+        return SP105EProtocol.setColor(red: red, green: green, blue: blue)
+    }
+
+    func brightnessUp() -> Data? {
+        return SP105EProtocol.brightnessUp
+    }
+
+    func brightnessDown() -> Data? {
+        return SP105EProtocol.brightnessDown
+    }
+
+    func speedUp() -> Data? {
+        return SP105EProtocol.speedUp
+    }
+
+    func speedDown() -> Data? {
+        return SP105EProtocol.speedDown
+    }
+
+    func setMode(_ mode: Int) -> Data? {
+        return SP105EProtocol.setMode(mode)
+    }
+
+    func setRGBMode() -> Data? {
+        return SP105EProtocol.setRGBMode
+    }
+
+    func setRGBWMode() -> Data? {
+        return SP105EProtocol.setRGBWMode
+    }
+}
+
+/// SP105E LED Controller Protocol (Static commands)
 /// All commands follow format: [0x38, param1, param2, param3, footer]
 struct SP105EProtocol {
 
-    // MARK: - Service & Characteristic UUIDs
+    // MARK: - Service & Characteristic UUIDs (kept for backward compatibility)
 
     static let serviceUUID = CBUUID(string: "FFE0")
     static let characteristicUUID = CBUUID(string: "FFE1")

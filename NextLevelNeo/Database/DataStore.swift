@@ -173,6 +173,14 @@ class DataStore: ObservableObject {
         saveDevices()
     }
 
+    /// Update all favorite colors at once (for group control)
+    func updateFavoriteColors(for deviceAddress: String, colors: [Int], names: [String?]) {
+        guard let index = devices.firstIndex(where: { $0.address == deviceAddress }) else { return }
+        devices[index].favoriteColors = colors
+        devices[index].favoriteColorNames = names
+        saveDevices()
+    }
+
     // MARK: - Favorite Modes
 
     func saveFavoriteMode(deviceAddress: String, slot: Int, mode: Int, name: String?) {
@@ -190,6 +198,14 @@ class DataStore: ObservableObject {
 
         devices[index].favoriteModes[slot] = -1
         devices[index].favoriteModeNames[slot] = nil
+        saveDevices()
+    }
+
+    /// Update all favorite modes at once (for group control)
+    func updateFavoriteModes(for deviceAddress: String, modes: [Int], names: [String?]) {
+        guard let index = devices.firstIndex(where: { $0.address == deviceAddress }) else { return }
+        devices[index].favoriteModes = modes
+        devices[index].favoriteModeNames = names
         saveDevices()
     }
 

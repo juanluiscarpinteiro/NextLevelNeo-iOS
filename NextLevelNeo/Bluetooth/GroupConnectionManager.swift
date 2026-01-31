@@ -21,7 +21,7 @@ class GroupConnectionManager: NSObject, ObservableObject {
     private var deviceTypes: [String: ControllerType] = [:]      // identifier -> controller type
     private var pendingConnections: [CBPeripheral] = []
     private var connectionDelayMs: Double = 300  // Delay between connection attempts (increased for reliability)
-    private var commandDelayMs: Double = 50      // Delay between sending to each device
+    private var commandDelayMs: Double = 150     // Delay between sending to each device (increased for reliability)
 
     // MARK: - Initialization
 
@@ -200,6 +200,133 @@ class GroupConnectionManager: NSObject, ObservableObject {
         sendProtocolCommandToAll { protocol in
             protocol.powerOff()
         }
+    }
+
+    // MARK: - Selected Device Commands
+
+    /// Send command to only selected devices (for separate controller sections)
+    func sendCommandToSelected(_ selectedAddresses: Set<String>, commandGenerator: (LEDProtocol) -> Data?) {
+        var delay: Double = 0
+
+        for (identifier, characteristic) in characteristics {
+            // Skip if not selected
+            guard selectedAddresses.contains(identifier) else { continue }
+
+            guard let peripheral = peripherals[identifier],
+                  let deviceProtocol = deviceProtocols[identifier],
+                  connectionStates[identifier] == .connected else { continue }
+
+            let writeType: CBCharacteristicWriteType = deviceProtocol.usesWriteWithoutResponse ? .withoutResponse : .withResponse
+
+            // Generate command for this device's protocol
+            guard let command = commandGenerator(deviceProtocol) else {
+                continue
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay / 1000) {
+                let hexString = command.map { String(format: "%02X", $0) }.joined(separator: " ")
+                print("[GroupManager] Sending to selected \(peripheral.name ?? "Unknown"): \(hexString)")
+                peripheral.writeValue(command, for: characteristic, type: writeType)
+            }
+            delay += commandDelayMs
+        }
+    }
+
+    /// Set color to selected devices only
+    func setColorToSelected(_ selectedAddresses: Set<String>, red: Int, green: Int, blue: Int) {
+        sendCommandToSelected(selectedAddresses) { protocol in
+            protocol.setColor(red: UInt8(red), green: UInt8(green), blue: UInt8(blue))
+        }
+    }
+
+    /// Set mode to selected devices only
+    func setModeToSelected(_ selectedAddresses: Set<String>, mode: Int) {
+        sendCommandToSelected(selectedAddresses) { protocol in
+            protocol.setMode(mode)
+        }
+    }
+
+    /// Set brightness to selected devices only (handles both BanlanX absolute and SP105E step-based)
+    func setBrightnessToSelected(_ selectedAddresses: Set<String>, brightness: Int, lastBrightness: Int) {
+        sendCommandToSelected(selectedAddresses) { protocol in
+            if let banlanx = protocol as? BanlanXProtocol {
+                return banlanx.setBrightnessAbsolute(brightness)
+            } else {
+                // SP105E uses step-based
+                if brightness > lastBrightness {
+                    return protocol.brightnessUp()
+                } else if brightness < lastBrightness {
+                    return protocol.brightnessDown()
+                }
+                return nil
+            }
+        }
+    }
+
+    /// Increase brightness for selected devices only
+    func increaseBrightnessToSelected(_ selectedAddresses: Set<String>) {
+        sendCommandToSelected(selectedAddresses) { protocol in
+            protocol.brightnessUp()
+        }
+    }
+
+    /// Decrease brightness for selected devices only
+    func decreaseBrightnessToSelected(_ selectedAddresses: Set<String>) {
+        sendCommandToSelected(selectedAddresses) { protocol in
+            protocol.brightnessDown()
+        }
+    }
+
+    /// Increase speed for selected devices only
+    func increaseSpeedToSelected(_ selectedAddresses: Set<String>) {
+        sendCommandToSelected(selectedAddresses) { protocol in
+            protocol.speedUp()
+        }
+    }
+
+    /// Decrease speed for selected devices only
+    func decreaseSpeedToSelected(_ selectedAddresses: Set<String>) {
+        sendCommandToSelected(selectedAddresses) { protocol in
+            protocol.speedDown()
+        }
+    }
+
+    /// Toggle power for selected devices only
+    func togglePowerToSelected(_ selectedAddresses: Set<String>) {
+        sendCommandToSelected(selectedAddresses) { protocol in
+            protocol.powerToggle()
+        }
+    }
+
+    // MARK: - Device Type Helpers
+
+    /// Get all connected BanlanX device addresses
+    func getConnectedBanlanXAddresses() -> Set<String> {
+        var addresses = Set<String>()
+        for (identifier, _) in characteristics {
+            if connectionStates[identifier] == .connected,
+               deviceTypes[identifier] == .banlanX {
+                addresses.insert(identifier)
+            }
+        }
+        return addresses
+    }
+
+    /// Get all connected SP105E device addresses
+    func getConnectedSP105EAddresses() -> Set<String> {
+        var addresses = Set<String>()
+        for (identifier, _) in characteristics {
+            if connectionStates[identifier] == .connected,
+               deviceTypes[identifier] == .sp105e {
+                addresses.insert(identifier)
+            }
+        }
+        return addresses
+    }
+
+    /// Get controller type for a device address
+    func getControllerType(for address: String) -> ControllerType {
+        return deviceTypes[address] ?? .sp105e
     }
 
     // MARK: - Private Methods

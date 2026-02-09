@@ -21,6 +21,17 @@ struct DeviceControlView: View {
     @State private var showingRenameDialog = false
     @State private var newName = ""
 
+    // Favorite colors
+    @State private var favoriteColors: [Int] = Array(repeating: -1, count: 6)
+    @State private var showingSaveFavoriteColorDialog = false
+    @State private var showingFavoriteColorOptions = false
+    @State private var selectedFavoriteColorSlot: Int = 0
+
+    // Favorite modes
+    @State private var favoriteModes: [Int] = Array(repeating: -1, count: 6)
+    @State private var showingFavoriteModeOptions = false
+    @State private var selectedFavoriteModeSlot: Int = 0
+
     var body: some View {
         ZStack {
             Color(hex: "0f0f0f").ignoresSafeArea()
@@ -54,12 +65,36 @@ struct DeviceControlView: View {
         } message: {
             Text("Are you sure you want to delete this device?")
         }
+        .confirmationDialog("Save Color to Slot", isPresented: $showingSaveFavoriteColorDialog) {
+            ForEach(0..<6, id: \.self) { slot in
+                Button("Slot \(slot + 1)") {
+                    saveFavoriteColor(slot: slot)
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        }
+        .confirmationDialog("Favorite Color Options", isPresented: $showingFavoriteColorOptions) {
+            Button("Delete") {
+                deleteFavoriteColor(slot: selectedFavoriteColorSlot)
+            }
+            Button("Cancel", role: .cancel) { }
+        }
+        .confirmationDialog("Favorite Mode Options", isPresented: $showingFavoriteModeOptions) {
+            Button("Replace with current mode") {
+                saveFavoriteMode(slot: selectedFavoriteModeSlot)
+            }
+            Button("Delete") {
+                deleteFavoriteMode(slot: selectedFavoriteModeSlot)
+            }
+            Button("Cancel", role: .cancel) { }
+        }
         .sheet(isPresented: $showingHelp) {
             HelpView()
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(device: device)
                 .environmentObject(dataStore)
+                .environmentObject(bleManager)
         }
     }
 
@@ -170,13 +205,24 @@ struct DeviceControlView: View {
 
             Divider().background(Color.gray)
 
+            // Favorite Colors
+            favoriteColorsSection
+
+            Divider().background(Color.gray)
+
             // Color Wheel
             colorWheelSection
 
-            // Color Preview
+            // Color Preview (long press to save)
             colorPreviewSection
 
             Divider().background(Color.gray)
+
+            // Favorite Modes (only for SP105E)
+            if device.supportsEffectModes {
+                favoriteModesSection
+                Divider().background(Color.gray)
+            }
 
             // Mode Selection (grayed out for BanlanX)
             modeSection
@@ -225,6 +271,58 @@ struct DeviceControlView: View {
         }
     }
 
+    // MARK: - Favorite Colors
+
+    private var favoriteColorsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("FAVORITE COLORS")
+                    .font(.caption.bold())
+                    .foregroundColor(.white)
+                    .tracking(1)
+
+                Spacer()
+
+                Text("Long press preview to save")
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+            }
+
+            HStack(spacing: 8) {
+                ForEach(0..<6, id: \.self) { slot in
+                    Button(action: {
+                        if favoriteColors[slot] != -1 {
+                            applyFavoriteColor(slot: slot)
+                        }
+                    }) {
+                        if favoriteColors[slot] != -1 {
+                            let (r, g, b) = DeviceItem.unpackColor(favoriteColors[slot])
+                            Circle()
+                                .fill(Color(red: Double(r)/255, green: Double(g)/255, blue: Double(b)/255))
+                                .frame(width: 44, height: 44)
+                                .overlay(Circle().stroke(Color.white.opacity(0.3), lineWidth: 2))
+                        } else {
+                            Circle()
+                                .fill(Color(hex: "3a3a3a"))
+                                .frame(width: 44, height: 44)
+                                .overlay(
+                                    Circle()
+                                        .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [4]))
+                                        .foregroundColor(.gray)
+                                )
+                        }
+                    }
+                    .onLongPressGesture {
+                        if favoriteColors[slot] != -1 {
+                            selectedFavoriteColorSlot = slot
+                            showingFavoriteColorOptions = true
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Color Wheel
 
     private var colorWheelSection: some View {
@@ -251,15 +349,88 @@ struct DeviceControlView: View {
 
     private var colorPreviewSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("SELECTED COLOR")
-                .font(.caption.bold())
-                .foregroundColor(.white)
-                .tracking(1)
+            HStack {
+                Text("SELECTED COLOR")
+                    .font(.caption.bold())
+                    .foregroundColor(.white)
+                    .tracking(1)
+
+                Spacer()
+
+                Text("Long press to save")
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+            }
 
             Rectangle()
                 .fill(Color(red: currentRed/255, green: currentGreen/255, blue: currentBlue/255))
                 .frame(height: 60)
                 .cornerRadius(8)
+                .onLongPressGesture {
+                    showingSaveFavoriteColorDialog = true
+                }
+        }
+    }
+
+    // MARK: - Favorite Modes
+
+    private var favoriteModesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("FAVORITE MODES")
+                    .font(.caption.bold())
+                    .foregroundColor(.white)
+                    .tracking(1)
+
+                Spacer()
+
+                Text("Long press empty slot to save")
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ForEach(0..<6, id: \.self) { slot in
+                    Button(action: {
+                        if favoriteModes[slot] != -1 {
+                            applyFavoriteMode(slot: slot)
+                        }
+                    }) {
+                        if favoriteModes[slot] != -1 {
+                            Text("Mode \(favoriteModes[slot])")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 36)
+                                .background(Color.orange)
+                                .cornerRadius(8)
+                        } else {
+                            Text("")
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 36)
+                                .background(Color(hex: "3a3a3a"))
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [4]))
+                                        .foregroundColor(.gray)
+                                )
+                        }
+                    }
+                    .onLongPressGesture {
+                        if favoriteModes[slot] != -1 {
+                            selectedFavoriteModeSlot = slot
+                            showingFavoriteModeOptions = true
+                        } else {
+                            // Empty slot - save current mode
+                            if selectedMode > 0 {
+                                saveFavoriteMode(slot: slot)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -303,7 +474,7 @@ struct DeviceControlView: View {
                 .cornerRadius(8)
                 .disabled(!device.supportsEffectModes)
                 .opacity(device.supportsEffectModes ? 1.0 : 0.5)
-                .onChange(of: selectedMode) { _, newValue in
+                .onChange(of: selectedMode) { newValue in
                     if newValue > 0 && device.supportsEffectModes {
                         bleManager.setMode(newValue)
                     }
@@ -343,7 +514,7 @@ struct DeviceControlView: View {
 
                 Slider(value: $brightness, in: 0...255, step: 1)
                     .tint(.orange)
-                    .onChange(of: brightness) { oldValue, newValue in
+                    .onChange(of: brightness) { newValue in
                         // For BanlanX, send absolute brightness on slider change
                         if device.controllerType == .banlanX {
                             bleManager.setBrightnessAbsolute(Int(newValue))
@@ -427,12 +598,26 @@ struct DeviceControlView: View {
     // MARK: - Actions
 
     private func loadDeviceState() {
-        currentRed = Double(device.lastRed)
-        currentGreen = Double(device.lastGreen)
-        currentBlue = Double(device.lastBlue)
-        brightness = Double(device.lastBrightness)
-        speed = Double(device.lastSpeed)
-        selectedMode = device.lastMode
+        // Load device from dataStore to get latest values
+        if let savedDevice = dataStore.getDevice(address: device.address) {
+            currentRed = Double(savedDevice.lastRed)
+            currentGreen = Double(savedDevice.lastGreen)
+            currentBlue = Double(savedDevice.lastBlue)
+            brightness = Double(savedDevice.lastBrightness)
+            speed = Double(savedDevice.lastSpeed)
+            selectedMode = savedDevice.lastMode
+            favoriteColors = savedDevice.favoriteColors
+            favoriteModes = savedDevice.favoriteModes
+        } else {
+            currentRed = Double(device.lastRed)
+            currentGreen = Double(device.lastGreen)
+            currentBlue = Double(device.lastBlue)
+            brightness = Double(device.lastBrightness)
+            speed = Double(device.lastSpeed)
+            selectedMode = device.lastMode
+            favoriteColors = device.favoriteColors
+            favoriteModes = device.favoriteModes
+        }
     }
 
     private func saveAndDisconnect() {
@@ -449,10 +634,8 @@ struct DeviceControlView: View {
     }
 
     private func connect() {
-        // Need to find the peripheral first - this requires scanning
-        // For now, start scan and connect when found
-        bleManager.startScanning()
-        // TODO: Auto-connect when device found
+        bleManager.setProtocol(for: device)
+        bleManager.connectToDevice(address: device.address)
     }
 
     private func togglePower() {
@@ -519,6 +702,44 @@ struct DeviceControlView: View {
     private func deleteDevice() {
         dataStore.deleteDevice(address: device.address)
         dismiss()
+    }
+
+    // MARK: - Favorite Colors Actions
+
+    private func saveFavoriteColor(slot: Int) {
+        let packedColor = DeviceItem.packColor(red: Int(currentRed), green: Int(currentGreen), blue: Int(currentBlue))
+        favoriteColors[slot] = packedColor
+        dataStore.saveFavoriteColor(deviceAddress: device.address, slot: slot, color: packedColor, name: nil)
+    }
+
+    private func applyFavoriteColor(slot: Int) {
+        guard favoriteColors[slot] != -1 else { return }
+        let (r, g, b) = DeviceItem.unpackColor(favoriteColors[slot])
+        setColor(red: r, green: g, blue: b)
+    }
+
+    private func deleteFavoriteColor(slot: Int) {
+        favoriteColors[slot] = -1
+        dataStore.clearFavoriteColor(deviceAddress: device.address, slot: slot)
+    }
+
+    // MARK: - Favorite Modes Actions
+
+    private func saveFavoriteMode(slot: Int) {
+        guard selectedMode > 0 else { return }
+        favoriteModes[slot] = selectedMode
+        dataStore.saveFavoriteMode(deviceAddress: device.address, slot: slot, mode: selectedMode, name: nil)
+    }
+
+    private func applyFavoriteMode(slot: Int) {
+        guard favoriteModes[slot] != -1 else { return }
+        selectedMode = favoriteModes[slot]
+        bleManager.setMode(selectedMode)
+    }
+
+    private func deleteFavoriteMode(slot: Int) {
+        favoriteModes[slot] = -1
+        dataStore.clearFavoriteMode(deviceAddress: device.address, slot: slot)
     }
 }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct GroupControlView: View {
     @EnvironmentObject var dataStore: DataStore
@@ -9,65 +10,66 @@ struct GroupControlView: View {
 
     @StateObject private var groupManager = GroupConnectionManager()
 
-    // Separate devices by type
-    @State private var banlanXDevices: [DeviceItem] = []
-    @State private var sp105eDevices: [DeviceItem] = []
+    // Shared state
+    @State private var isPowerOn = true
+    @State private var showingHelp = false
 
-    // Selection tracking (default: all selected)
-    @State private var selectedBanlanXAddresses: Set<String> = []
-    @State private var selectedSP105EAddresses: Set<String> = []
-
-    // DEMON EYE state
+    // Demon Eye (PWM) section state
     @State private var demonEyeColor = Color.white
     @State private var demonEyeRed: Double = 255
     @State private var demonEyeGreen: Double = 255
     @State private var demonEyeBlue: Double = 255
-    @State private var isDemonEyeWheelExpanded = false
+    @State private var showDemonEyeWheel = false
     @State private var demonEyeFavoriteColors: [Int] = Array(repeating: -1, count: 6)
+    @State private var selectedDemonEyeDevices: Set<String> = []
+    @State private var showingSaveDemonEyeColorDialog = false
+    @State private var showingDemonEyeColorOptions = false
+    @State private var selectedDemonEyeColorSlot: Int = 0
 
-    // SP105E state
+    // SP105E section state
     @State private var sp105eColor = Color.white
     @State private var sp105eRed: Double = 255
     @State private var sp105eGreen: Double = 255
     @State private var sp105eBlue: Double = 255
-    @State private var sp105eBrightness: Double = 128
-    @State private var sp105eLastBrightness: Int = 128
-    @State private var sp105eSpeed: Double = 128
-    @State private var sp105eSelectedMode: Int = 0
+    @State private var brightness: Double = 128
+    @State private var lastBrightness: Int = 128
+    @State private var speed: Double = 128
+    @State private var selectedMode: Int = 0
+    @State private var selectedSP105EDevices: Set<String> = []
     @State private var sp105eFavoriteModes: [Int] = Array(repeating: -1, count: 6)
+    @State private var showingSaveSP105EModeDialog = false
+    @State private var showingSP105EModeOptions = false
+    @State private var selectedSP105EModeSlot: Int = 0
 
-    // Common state
-    @State private var isPowerOn = true
-    @State private var showingHelp = false
+    // Auto mode cycling
+    @State private var isCycling = false
+    @State private var cycleTimer: Timer?
+    private let cycleInterval: TimeInterval = 15.0
 
     var body: some View {
         ZStack {
             Color(hex: "0f0f0f").ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header
                 headerView
 
-                // Content
                 ScrollView {
                     VStack(spacing: 16) {
-                        // Connection status
                         connectionStatusView
-
-                        // Device status list
                         deviceStatusList
-
-                        // Connect button
                         connectButton
 
-                        // DEMON EYE Section (BanlanX devices)
-                        if !banlanXDevices.isEmpty {
-                            demonEyeSection
-                        }
+                        // Only show controls when ALL devices are connected
+                        if groupManager.connectedCount == groupManager.totalCount && groupManager.totalCount > 0 {
+                            // Demon Eye Section (PWM devices)
+                            if hasPWMDevices {
+                                demonEyeSection
+                            }
 
-                        // SP105E Section
-                        if !sp105eDevices.isEmpty {
-                            sp105eSection
+                            // SP105E Section (Addressable LED devices)
+                            if hasSP105EDevices {
+                                sp105eSection
+                            }
                         }
                     }
                     .padding()
@@ -75,49 +77,67 @@ struct GroupControlView: View {
             }
         }
         .navigationBarHidden(true)
-        .onAppear {
-            separateDevicesByType()
-            loadFavorites()
-        }
+        .onAppear(perform: initializeState)
         .onDisappear {
+            stopModeCycling()
             groupManager.disconnectAll()
         }
         .sheet(isPresented: $showingHelp) {
             GroupControlHelpView()
         }
-    }
-
-    // MARK: - Device Separation
-
-    private func separateDevicesByType() {
-        let allDevices = dataStore.getDevicesInGroup(groupId: group.id)
-        banlanXDevices = allDevices.filter { $0.controllerType == .banlanX }
-        sp105eDevices = allDevices.filter { $0.controllerType == .sp105e }
-
-        // Default: all selected
-        selectedBanlanXAddresses = Set(banlanXDevices.map { $0.address })
-        selectedSP105EAddresses = Set(sp105eDevices.map { $0.address })
-    }
-
-    private func loadFavorites() {
-        // Load DEMON EYE favorites from first BanlanX device
-        if let firstBanlanX = banlanXDevices.first {
-            demonEyeFavoriteColors = firstBanlanX.favoriteColors
+        .confirmationDialog("Save Color to Slot", isPresented: $showingSaveDemonEyeColorDialog) {
+            ForEach(0..<6, id: \.self) { slot in
+                Button("Slot \(slot + 1)") {
+                    saveDemonEyeFavoriteColor(slot: slot)
+                }
+            }
+            Button("Cancel", role: .cancel) { }
         }
-        // Load SP105E favorites from first SP105E device
-        if let firstSP105E = sp105eDevices.first {
-            sp105eFavoriteModes = firstSP105E.favoriteModes
+        .confirmationDialog("Favorite Color Options", isPresented: $showingDemonEyeColorOptions) {
+            Button("Delete", role: .destructive) {
+                deleteDemonEyeFavoriteColor(slot: selectedDemonEyeColorSlot)
+            }
+            Button("Cancel", role: .cancel) { }
+        }
+        .confirmationDialog("Save Mode to Slot", isPresented: $showingSaveSP105EModeDialog) {
+            ForEach(0..<6, id: \.self) { slot in
+                Button("Slot \(slot + 1)") {
+                    saveSP105EFavoriteMode(slot: slot)
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        }
+        .confirmationDialog("Favorite Mode Options", isPresented: $showingSP105EModeOptions) {
+            Button("Replace with current mode") {
+                saveSP105EFavoriteMode(slot: selectedSP105EModeSlot)
+            }
+            Button("Delete", role: .destructive) {
+                deleteSP105EFavoriteMode(slot: selectedSP105EModeSlot)
+            }
+            Button("Cancel", role: .cancel) { }
         }
     }
 
-    private func saveDemonEyeFavorites() {
-        guard let firstBanlanX = banlanXDevices.first else { return }
-        dataStore.updateFavoriteColors(for: firstBanlanX.address, colors: demonEyeFavoriteColors, names: Array(repeating: nil, count: 6))
+    // MARK: - Computed Properties
+
+    private var devices: [DeviceItem] {
+        dataStore.getDevicesInGroup(groupId: group.id)
     }
 
-    private func saveSP105EFavoriteModes() {
-        guard let firstSP105E = sp105eDevices.first else { return }
-        dataStore.updateFavoriteModes(for: firstSP105E.address, modes: sp105eFavoriteModes, names: Array(repeating: nil, count: 6))
+    private var pwmDevices: [DeviceItem] {
+        devices.filter { $0.controllerType == .banlanX }
+    }
+
+    private var sp105eDevices: [DeviceItem] {
+        devices.filter { $0.controllerType == .sp105e }
+    }
+
+    private var hasPWMDevices: Bool {
+        !pwmDevices.isEmpty
+    }
+
+    private var hasSP105EDevices: Bool {
+        !sp105eDevices.isEmpty
     }
 
     // MARK: - Header
@@ -125,6 +145,7 @@ struct GroupControlView: View {
     private var headerView: some View {
         HStack {
             Button(action: {
+                stopModeCycling()
                 groupManager.disconnectAll()
                 dismiss()
             }) {
@@ -207,8 +228,7 @@ struct GroupControlView: View {
     // MARK: - Device Status List
 
     private var deviceStatusList: some View {
-        VStack(spacing: 8) {
-            let devices = dataStore.getDevicesInGroup(groupId: group.id)
+        VStack(spacing: 0) {
             ForEach(devices) { device in
                 HStack {
                     Circle()
@@ -221,7 +241,7 @@ struct GroupControlView: View {
 
                     Spacer()
 
-                    Text(device.controllerType == .banlanX ? "DEMON EYE" : "LED STRIP")
+                    Text(device.controllerType == .sp105e ? "Addressable" : "PWM")
                         .font(.caption2)
                         .foregroundColor(.gray)
                         .padding(.horizontal, 6)
@@ -229,10 +249,10 @@ struct GroupControlView: View {
                         .background(Color(hex: "3a3a3a"))
                         .cornerRadius(4)
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
+                .padding(.vertical, 6)
             }
         }
+        .padding()
         .background(Color(hex: "1a1a1a"))
         .cornerRadius(8)
     }
@@ -260,51 +280,45 @@ struct GroupControlView: View {
         }
     }
 
-    // MARK: - DEMON EYE Section
+    // MARK: - Demon Eye Section (PWM Devices)
 
     private var demonEyeSection: some View {
-        VStack(spacing: 0) {
-            // Section header
-            HStack {
-                Text("DEMON EYE")
-                    .font(.headline.bold())
-                    .foregroundColor(.orange)
-                Spacer()
-            }
-            .padding()
-            .background(Color(hex: "2a2a2a"))
+        VStack(alignment: .leading, spacing: 12) {
+            // Section Title
+            Text("DEMON EYE")
+                .font(.headline)
+                .foregroundColor(.orange)
+                .tracking(1)
 
-            VStack(spacing: 16) {
-                // Quick Colors
-                demonEyeQuickColors
+            Divider().background(Color.gray.opacity(0.5))
 
-                Divider().background(Color.gray)
+            // Quick Colors
+            demonEyeQuickColorsView
 
-                // Collapsible Color Wheel
-                demonEyeColorWheelSection
+            Divider().background(Color.gray.opacity(0.5))
 
-                // Color Preview
-                demonEyeColorPreview
+            // Custom Color with Show/Hide toggle
+            demonEyeCustomColorView
 
-                Divider().background(Color.gray)
+            // Color Preview
+            demonEyeColorPreviewView
 
-                // Favorite Colors
-                demonEyeFavoritesSection
+            Divider().background(Color.gray.opacity(0.5))
 
-                Divider().background(Color.gray)
+            // Favorite Colors
+            demonEyeFavoriteColorsView
 
-                // Device Selection
-                demonEyeDeviceSelection
-            }
-            .padding()
+            Divider().background(Color.gray.opacity(0.5))
+
+            // Device Selection
+            demonEyeDeviceSelectionView
         }
+        .padding()
         .background(Color(hex: "252525"))
         .cornerRadius(12)
-        .opacity(groupManager.isAnyConnected ? 1 : 0.5)
-        .disabled(!groupManager.isAnyConnected)
     }
 
-    private var demonEyeQuickColors: some View {
+    private var demonEyeQuickColorsView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("QUICK COLORS")
                 .font(.caption.bold())
@@ -312,7 +326,7 @@ struct GroupControlView: View {
                 .tracking(1)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     ForEach(SP105EProtocol.quickColors, id: \.name) { color in
                         Button(action: {
                             setDemonEyeColor(red: Int(color.red), green: Int(color.green), blue: Int(color.blue))
@@ -321,7 +335,7 @@ struct GroupControlView: View {
                                 .fill(Color(red: Double(color.red)/255,
                                            green: Double(color.green)/255,
                                            blue: Double(color.blue)/255))
-                                .frame(width: 50, height: 50)
+                                .frame(width: 45, height: 45)
                                 .overlay(Circle().stroke(Color.white.opacity(0.3), lineWidth: 2))
                         }
                     }
@@ -330,25 +344,29 @@ struct GroupControlView: View {
         }
     }
 
-    private var demonEyeColorWheelSection: some View {
+    private var demonEyeCustomColorView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    isDemonEyeWheelExpanded.toggle()
-                }
-            }) {
-                HStack {
-                    Text("CUSTOM COLOR")
-                        .font(.caption.bold())
+            HStack {
+                Text("CUSTOM COLOR")
+                    .font(.caption.bold())
+                    .foregroundColor(.white)
+                    .tracking(1)
+
+                Spacer()
+
+                Button(action: { showDemonEyeWheel.toggle() }) {
+                    Text(showDemonEyeWheel ? "Hide" : "Show")
+                        .font(.caption)
+                        .fontWeight(.bold)
                         .foregroundColor(.white)
-                        .tracking(1)
-                    Spacer()
-                    Image(systemName: isDemonEyeWheelExpanded ? "chevron.up" : "chevron.down")
-                        .foregroundColor(.orange)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue)
+                        .cornerRadius(6)
                 }
             }
 
-            if isDemonEyeWheelExpanded {
+            if showDemonEyeWheel {
                 ColorWheelView(
                     selectedColor: $demonEyeColor,
                     onColorChanged: { color in
@@ -358,169 +376,174 @@ struct GroupControlView: View {
                                         blue: Int(components.blue * 255))
                     }
                 )
-                .frame(height: 250)
+                .frame(height: 220)
             }
         }
     }
 
-    private var demonEyeColorPreview: some View {
+    private var demonEyeColorPreviewView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("SELECTED COLOR")
-                .font(.caption.bold())
-                .foregroundColor(.white)
-                .tracking(1)
+            HStack {
+                Text("SELECTED COLOR")
+                    .font(.caption.bold())
+                    .foregroundColor(.white)
+                    .tracking(1)
+
+                Spacer()
+
+                Text("Long press to save")
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+            }
 
             Rectangle()
                 .fill(Color(red: demonEyeRed/255, green: demonEyeGreen/255, blue: demonEyeBlue/255))
                 .frame(height: 40)
                 .cornerRadius(8)
+                .onLongPressGesture {
+                    showingSaveDemonEyeColorDialog = true
+                }
         }
     }
 
-    private var demonEyeFavoritesSection: some View {
+    private var demonEyeFavoriteColorsView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("FAVORITE COLORS")
                 .font(.caption.bold())
                 .foregroundColor(.white)
                 .tracking(1)
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
-                ForEach(0..<6, id: \.self) { index in
-                    demonEyeFavoriteSlot(index: index)
+            HStack(spacing: 4) {
+                ForEach(0..<6, id: \.self) { slot in
+                    favoriteColorButton(slot: slot)
                 }
             }
         }
     }
 
-    private func demonEyeFavoriteSlot(index: Int) -> some View {
-        let packed = demonEyeFavoriteColors[index]
-        let hasColor = packed != -1
-
-        return Button(action: {
-            if hasColor {
-                let (r, g, b) = DeviceItem.unpackColor(packed)
-                setDemonEyeColor(red: r, green: g, blue: b)
+    private func favoriteColorButton(slot: Int) -> some View {
+        Group {
+            if demonEyeFavoriteColors[slot] != -1 {
+                let (r, g, b) = DeviceItem.unpackColor(demonEyeFavoriteColors[slot])
+                Rectangle()
+                    .fill(Color(red: Double(r)/255, green: Double(g)/255, blue: Double(b)/255))
+                    .frame(height: 40)
+                    .cornerRadius(4)
+            } else {
+                Rectangle()
+                    .fill(Color(hex: "3a3a3a"))
+                    .frame(height: 40)
+                    .cornerRadius(4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4]))
+                            .foregroundColor(.gray)
+                    )
             }
-        }) {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(hasColor ? Color(red: Double((packed >> 16) & 0xFF) / 255,
-                                       green: Double((packed >> 8) & 0xFF) / 255,
-                                       blue: Double(packed & 0xFF) / 255) : Color(hex: "3a3a3a"))
-                .frame(height: 40)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                )
-                .overlay(
-                    !hasColor ? Image(systemName: "plus")
-                        .foregroundColor(.gray) : nil
-                )
         }
-        .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.5)
-                .onEnded { _ in
-                    // Save current color to favorite
-                    let packed = DeviceItem.packColor(red: Int(demonEyeRed), green: Int(demonEyeGreen), blue: Int(demonEyeBlue))
-                    demonEyeFavoriteColors[index] = packed
-                    saveDemonEyeFavorites()
-                }
-        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if demonEyeFavoriteColors[slot] != -1 {
+                applyDemonEyeFavoriteColor(slot: slot)
+            }
+        }
+        .onLongPressGesture(minimumDuration: 0.5) {
+            if demonEyeFavoriteColors[slot] != -1 {
+                // Existing color - show options to delete
+                selectedDemonEyeColorSlot = slot
+                showingDemonEyeColorOptions = true
+            } else {
+                // Empty slot - save current color
+                saveDemonEyeFavoriteColor(slot: slot)
+            }
+        }
     }
 
-    private var demonEyeDeviceSelection: some View {
+    private var demonEyeDeviceSelectionView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("SELECT DEVICES")
                 .font(.caption.bold())
                 .foregroundColor(.white)
                 .tracking(1)
 
-            ForEach(banlanXDevices) { device in
+            ForEach(pwmDevices) { device in
                 HStack {
-                    Toggle(isOn: Binding(
-                        get: { selectedBanlanXAddresses.contains(device.address) },
-                        set: { isSelected in
-                            if isSelected {
-                                selectedBanlanXAddresses.insert(device.address)
-                            } else {
-                                selectedBanlanXAddresses.remove(device.address)
-                            }
+                    Button(action: {
+                        if selectedDemonEyeDevices.contains(device.address) {
+                            selectedDemonEyeDevices.remove(device.address)
+                        } else {
+                            selectedDemonEyeDevices.insert(device.address)
                         }
-                    )) {
-                        HStack {
-                            Circle()
-                                .fill(deviceStatusColor(for: device))
-                                .frame(width: 8, height: 8)
-                            Text(device.displayName)
-                                .font(.subheadline)
-                                .foregroundColor(.white)
-                        }
+                    }) {
+                        Image(systemName: selectedDemonEyeDevices.contains(device.address) ? "checkmark.square.fill" : "square")
+                            .foregroundColor(selectedDemonEyeDevices.contains(device.address) ? .orange : .gray)
                     }
-                    .toggleStyle(CheckboxToggleStyle())
+
+                    Text(device.displayName)
+                        .font(.subheadline)
+                        .foregroundColor(.white)
+
+                    Spacer()
                 }
+                .padding(.vertical, 2)
             }
         }
     }
 
-    // MARK: - SP105E Section
+    // MARK: - SP105E Section (Addressable LED Devices)
 
     private var sp105eSection: some View {
-        VStack(spacing: 0) {
-            // Section header
-            HStack {
-                Text("LED STRIP CONTROLLERS")
-                    .font(.headline.bold())
-                    .foregroundColor(.orange)
-                Spacer()
-            }
-            .padding()
-            .background(Color(hex: "2a2a2a"))
+        VStack(alignment: .leading, spacing: 12) {
+            // Section Title
+            Text("LED STRIP CONTROLLERS")
+                .font(.headline)
+                .foregroundColor(.cyan)
+                .tracking(1)
 
-            VStack(spacing: 16) {
-                // Quick Colors
-                sp105eQuickColors
+            Divider().background(Color.gray.opacity(0.5))
 
-                Divider().background(Color.gray)
+            // Quick Colors
+            sp105eQuickColorsView
 
-                // Color Wheel
-                sp105eColorWheelSection
+            Divider().background(Color.gray.opacity(0.5))
 
-                // Color Preview
-                sp105eColorPreview
+            // Color Wheel
+            sp105eColorWheelView
 
-                Divider().background(Color.gray)
+            // Color Preview
+            sp105eColorPreviewView
 
-                // Effect Mode
-                sp105eModeSection
+            Divider().background(Color.gray.opacity(0.5))
 
-                Divider().background(Color.gray)
+            // Effect Mode with Auto Cycle
+            sp105eModeView
 
-                // Brightness
-                sp105eBrightnessSection
+            Divider().background(Color.gray.opacity(0.5))
 
-                Divider().background(Color.gray)
+            // Brightness
+            sp105eBrightnessView
 
-                // Speed
-                sp105eSpeedSection
+            Divider().background(Color.gray.opacity(0.5))
 
-                Divider().background(Color.gray)
+            // Effect Speed
+            sp105eSpeedView
 
-                // Favorite Modes
-                sp105eFavoriteModesSection
+            Divider().background(Color.gray.opacity(0.5))
 
-                Divider().background(Color.gray)
+            // Favorite Modes
+            sp105eFavoriteModesView
 
-                // Device Selection
-                sp105eDeviceSelection
-            }
-            .padding()
+            Divider().background(Color.gray.opacity(0.5))
+
+            // Device Selection
+            sp105eDeviceSelectionView
         }
+        .padding()
         .background(Color(hex: "252525"))
         .cornerRadius(12)
-        .opacity(groupManager.isAnyConnected ? 1 : 0.5)
-        .disabled(!groupManager.isAnyConnected)
     }
 
-    private var sp105eQuickColors: some View {
+    private var sp105eQuickColorsView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("QUICK COLORS")
                 .font(.caption.bold())
@@ -528,16 +551,17 @@ struct GroupControlView: View {
                 .tracking(1)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     ForEach(SP105EProtocol.quickColors, id: \.name) { color in
                         Button(action: {
+                            stopModeCycling()
                             setSP105EColor(red: Int(color.red), green: Int(color.green), blue: Int(color.blue))
                         }) {
                             Circle()
                                 .fill(Color(red: Double(color.red)/255,
                                            green: Double(color.green)/255,
                                            blue: Double(color.blue)/255))
-                                .frame(width: 50, height: 50)
+                                .frame(width: 45, height: 45)
                                 .overlay(Circle().stroke(Color.white.opacity(0.3), lineWidth: 2))
                         }
                     }
@@ -546,7 +570,7 @@ struct GroupControlView: View {
         }
     }
 
-    private var sp105eColorWheelSection: some View {
+    private var sp105eColorWheelView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("COLOR WHEEL")
                 .font(.caption.bold())
@@ -556,17 +580,18 @@ struct GroupControlView: View {
             ColorWheelView(
                 selectedColor: $sp105eColor,
                 onColorChanged: { color in
+                    stopModeCycling()
                     let components = color.components
                     setSP105EColor(red: Int(components.red * 255),
                                   green: Int(components.green * 255),
                                   blue: Int(components.blue * 255))
                 }
             )
-            .frame(height: 250)
+            .frame(height: 240)
         }
     }
 
-    private var sp105eColorPreview: some View {
+    private var sp105eColorPreviewView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("SELECTED COLOR")
                 .font(.caption.bold())
@@ -575,57 +600,79 @@ struct GroupControlView: View {
 
             Rectangle()
                 .fill(Color(red: sp105eRed/255, green: sp105eGreen/255, blue: sp105eBlue/255))
-                .frame(height: 40)
+                .frame(height: 50)
                 .cornerRadius(8)
         }
     }
 
-    private var sp105eModeSection: some View {
+    private var sp105eModeView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("EFFECT MODE")
-                .font(.caption.bold())
-                .foregroundColor(.white)
-                .tracking(1)
+            HStack {
+                Text("EFFECT MODE")
+                    .font(.caption.bold())
+                    .foregroundColor(.white)
+                    .tracking(1)
+
+                Spacer()
+
+                Button(action: toggleModeCycling) {
+                    Text(isCycling ? "Stop Cycle" : "Auto Cycle")
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(isCycling ? Color.red : Color.blue)
+                        .cornerRadius(6)
+                }
+            }
 
             HStack {
-                Button(action: previousSP105EMode) {
+                Button(action: previousMode) {
                     Image(systemName: "chevron.left")
                         .font(.title2.bold())
-                        .frame(width: 50, height: 50)
+                        .frame(width: 45, height: 45)
                         .background(Color.orange)
                         .foregroundColor(.white)
                         .cornerRadius(8)
                 }
 
-                Picker("Mode", selection: $sp105eSelectedMode) {
+                Picker("Mode", selection: $selectedMode) {
                     ForEach(0..<SP105EProtocol.modeNames.count, id: \.self) { index in
                         Text(SP105EProtocol.modeNames[index]).tag(index)
                     }
                 }
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity)
-                .frame(height: 50)
+                .frame(height: 45)
                 .background(Color(hex: "3a3a3a"))
                 .cornerRadius(8)
-                .onChange(of: sp105eSelectedMode) { _, newValue in
+                .onChange(of: selectedMode) { newValue in
                     if newValue > 0 {
-                        groupManager.setModeToSelected(selectedSP105EAddresses, mode: newValue)
+                        groupManager.setMode(newValue, selectedOnly: selectedSP105EDevices)
                     }
                 }
 
-                Button(action: nextSP105EMode) {
+                Button(action: nextMode) {
                     Image(systemName: "chevron.right")
                         .font(.title2.bold())
-                        .frame(width: 50, height: 50)
+                        .frame(width: 45, height: 45)
                         .background(Color.orange)
                         .foregroundColor(.white)
                         .cornerRadius(8)
                 }
             }
+
+            if isCycling {
+                Text("Cycling modes every 15 seconds...")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .frame(maxWidth: .infinity)
+            }
         }
     }
 
-    private var sp105eBrightnessSection: some View {
+    private var sp105eBrightnessView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("BRIGHTNESS")
                 .font(.caption.bold())
@@ -633,39 +680,39 @@ struct GroupControlView: View {
                 .tracking(1)
 
             HStack {
-                Button(action: decreaseSP105EBrightness) {
+                Button(action: decreaseBrightness) {
                     Text("-")
                         .font(.title.bold())
-                        .frame(width: 50, height: 50)
+                        .frame(width: 45, height: 45)
                         .background(Color.orange)
                         .foregroundColor(.white)
                         .cornerRadius(8)
                 }
 
-                Slider(value: $sp105eBrightness, in: 0...255, step: 1)
+                Slider(value: $brightness, in: 0...255, step: 1)
                     .tint(.orange)
-                    .onChange(of: sp105eBrightness) { oldValue, newValue in
-                        groupManager.setBrightnessToSelected(selectedSP105EAddresses, brightness: Int(newValue), lastBrightness: sp105eLastBrightness)
-                        sp105eLastBrightness = Int(newValue)
+                    .onChange(of: brightness) { newValue in
+                        groupManager.setBrightnessAbsolute(Int(newValue), lastBrightness: lastBrightness, selectedOnly: selectedSP105EDevices)
+                        lastBrightness = Int(newValue)
                     }
 
-                Button(action: increaseSP105EBrightness) {
+                Button(action: increaseBrightness) {
                     Text("+")
                         .font(.title.bold())
-                        .frame(width: 50, height: 50)
+                        .frame(width: 45, height: 45)
                         .background(Color.orange)
                         .foregroundColor(.white)
                         .cornerRadius(8)
                 }
             }
 
-            Text("\(Int(sp105eBrightness * 100 / 255))%")
+            Text("\(Int(brightness * 100 / 255))%")
                 .foregroundColor(.orange)
                 .frame(maxWidth: .infinity)
         }
     }
 
-    private var sp105eSpeedSection: some View {
+    private var sp105eSpeedView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("EFFECT SPEED")
                 .font(.caption.bold())
@@ -673,88 +720,107 @@ struct GroupControlView: View {
                 .tracking(1)
 
             HStack {
-                Button(action: decreaseSP105ESpeed) {
+                Button(action: decreaseSpeed) {
                     Text("-")
                         .font(.title.bold())
-                        .frame(width: 50, height: 50)
+                        .frame(width: 45, height: 45)
                         .background(Color.orange)
                         .foregroundColor(.white)
                         .cornerRadius(8)
                 }
 
-                Slider(value: $sp105eSpeed, in: 0...255, step: 1)
+                Slider(value: $speed, in: 0...255, step: 1)
                     .tint(.orange)
 
-                Button(action: increaseSP105ESpeed) {
+                Button(action: increaseSpeed) {
                     Text("+")
                         .font(.title.bold())
-                        .frame(width: 50, height: 50)
+                        .frame(width: 45, height: 45)
                         .background(Color.orange)
                         .foregroundColor(.white)
                         .cornerRadius(8)
                 }
             }
 
-            Text("\(Int(sp105eSpeed * 100 / 255))%")
+            Text("\(Int(speed * 100 / 255))%")
                 .foregroundColor(.orange)
                 .frame(maxWidth: .infinity)
         }
     }
 
-    private var sp105eFavoriteModesSection: some View {
+    private var sp105eFavoriteModesView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("FAVORITE MODES")
-                .font(.caption.bold())
-                .foregroundColor(.white)
-                .tracking(1)
+            HStack {
+                Text("FAVORITE MODES")
+                    .font(.caption.bold())
+                    .foregroundColor(.white)
+                    .tracking(1)
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                ForEach(0..<6, id: \.self) { index in
-                    sp105eFavoriteModeSlot(index: index)
+                Spacer()
+
+                Text("Long press empty slot to save")
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+            }
+
+            // Row 1: Slots 1-3
+            HStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { slot in
+                    favoriteModeButton(slot: slot)
+                }
+            }
+
+            // Row 2: Slots 4-6
+            HStack(spacing: 4) {
+                ForEach(3..<6, id: \.self) { slot in
+                    favoriteModeButton(slot: slot)
                 }
             }
         }
     }
 
-    private func sp105eFavoriteModeSlot(index: Int) -> some View {
-        let mode = sp105eFavoriteModes[index]
-        let hasMode = mode != -1
-
-        return Button(action: {
-            if hasMode {
-                sp105eSelectedMode = mode
-                groupManager.setModeToSelected(selectedSP105EAddresses, mode: mode)
+    private func favoriteModeButton(slot: Int) -> some View {
+        Group {
+            if sp105eFavoriteModes[slot] != -1 {
+                Text(SP105EProtocol.modeNames[safe: sp105eFavoriteModes[slot]] ?? "Mode \(sp105eFavoriteModes[slot])")
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                    .background(Color.orange)
+                    .cornerRadius(4)
+                    .lineLimit(1)
+            } else {
+                Rectangle()
+                    .fill(Color(hex: "3a3a3a"))
+                    .frame(height: 40)
+                    .cornerRadius(4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4]))
+                            .foregroundColor(.gray)
+                    )
             }
-        }) {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(hasMode ? Color.orange.opacity(0.3) : Color(hex: "3a3a3a"))
-                .frame(height: 50)
-                .overlay(
-                    Text(hasMode ? SP105EProtocol.modeNames[safe: mode] ?? "Mode \(mode)" : "+")
-                        .font(.caption)
-                        .foregroundColor(hasMode ? .white : .gray)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                        .padding(4)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.orange.opacity(hasMode ? 0.5 : 0.2), lineWidth: 1)
-                )
         }
-        .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.5)
-                .onEnded { _ in
-                    // Save current mode to favorite
-                    if sp105eSelectedMode > 0 {
-                        sp105eFavoriteModes[index] = sp105eSelectedMode
-                        saveSP105EFavoriteModes()
-                    }
-                }
-        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if sp105eFavoriteModes[slot] != -1 {
+                applySP105EFavoriteMode(slot: slot)
+            }
+        }
+        .onLongPressGesture(minimumDuration: 0.5) {
+            if sp105eFavoriteModes[slot] != -1 {
+                // Existing mode - show options to replace or delete
+                selectedSP105EModeSlot = slot
+                showingSP105EModeOptions = true
+            } else if selectedMode > 0 {
+                // Empty slot and valid mode selected - save it
+                saveSP105EFavoriteMode(slot: slot)
+            }
+        }
     }
 
-    private var sp105eDeviceSelection: some View {
+    private var sp105eDeviceSelectionView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("SELECT DEVICES")
                 .font(.caption.bold())
@@ -763,128 +829,175 @@ struct GroupControlView: View {
 
             ForEach(sp105eDevices) { device in
                 HStack {
-                    Toggle(isOn: Binding(
-                        get: { selectedSP105EAddresses.contains(device.address) },
-                        set: { isSelected in
-                            if isSelected {
-                                selectedSP105EAddresses.insert(device.address)
-                            } else {
-                                selectedSP105EAddresses.remove(device.address)
-                            }
+                    Button(action: {
+                        if selectedSP105EDevices.contains(device.address) {
+                            selectedSP105EDevices.remove(device.address)
+                        } else {
+                            selectedSP105EDevices.insert(device.address)
                         }
-                    )) {
-                        HStack {
-                            Circle()
-                                .fill(deviceStatusColor(for: device))
-                                .frame(width: 8, height: 8)
-                            Text(device.displayName)
-                                .font(.subheadline)
-                                .foregroundColor(.white)
-                        }
+                    }) {
+                        Image(systemName: selectedSP105EDevices.contains(device.address) ? "checkmark.square.fill" : "square")
+                            .foregroundColor(selectedSP105EDevices.contains(device.address) ? .cyan : .gray)
                     }
-                    .toggleStyle(CheckboxToggleStyle())
+
+                    Text(device.displayName)
+                        .font(.subheadline)
+                        .foregroundColor(.white)
+
+                    Spacer()
                 }
+                .padding(.vertical, 2)
             }
         }
     }
 
     // MARK: - Actions
 
+    private func initializeState() {
+        // Initialize selected devices with all devices in each category
+        selectedDemonEyeDevices = Set(pwmDevices.map { $0.address })
+        selectedSP105EDevices = Set(sp105eDevices.map { $0.address })
+    }
+
     private func toggleConnection() {
         if groupManager.isAnyConnected {
+            stopModeCycling()
             groupManager.disconnectAll()
         } else {
-            let devices = dataStore.getDevicesInGroup(groupId: group.id)
             groupManager.connectAll(devices: devices, knownPeripherals: bleManager.discoveredPeripherals)
         }
     }
 
     private func togglePower() {
         isPowerOn.toggle()
-        groupManager.togglePower()
+        groupManager.togglePower(turnOn: isPowerOn)
     }
 
-    // DEMON EYE Actions
+    // Demon Eye actions
     private func setDemonEyeColor(red: Int, green: Int, blue: Int) {
         demonEyeRed = Double(red)
         demonEyeGreen = Double(green)
         demonEyeBlue = Double(blue)
-        groupManager.setColorToSelected(selectedBanlanXAddresses, red: red, green: green, blue: blue)
+        groupManager.setColor(red: red, green: green, blue: blue, selectedOnly: selectedDemonEyeDevices)
     }
 
-    // SP105E Actions
+    private func saveDemonEyeFavoriteColor(slot: Int) {
+        let packedColor = DeviceItem.packColor(red: Int(demonEyeRed), green: Int(demonEyeGreen), blue: Int(demonEyeBlue))
+        demonEyeFavoriteColors[slot] = packedColor
+    }
+
+    private func applyDemonEyeFavoriteColor(slot: Int) {
+        guard demonEyeFavoriteColors[slot] != -1 else { return }
+        let (r, g, b) = DeviceItem.unpackColor(demonEyeFavoriteColors[slot])
+        setDemonEyeColor(red: r, green: g, blue: b)
+    }
+
+    private func deleteDemonEyeFavoriteColor(slot: Int) {
+        demonEyeFavoriteColors[slot] = -1
+    }
+
+    // SP105E actions
     private func setSP105EColor(red: Int, green: Int, blue: Int) {
         sp105eRed = Double(red)
         sp105eGreen = Double(green)
         sp105eBlue = Double(blue)
-        sp105eSelectedMode = 0
-        groupManager.setColorToSelected(selectedSP105EAddresses, red: red, green: green, blue: blue)
+        selectedMode = 0
+        groupManager.setColor(red: red, green: green, blue: blue, selectedOnly: selectedSP105EDevices)
     }
 
-    private func previousSP105EMode() {
-        if sp105eSelectedMode > 1 {
-            sp105eSelectedMode -= 1
+    private func previousMode() {
+        stopModeCycling()
+        if selectedMode > 1 {
+            selectedMode -= 1
         } else {
-            sp105eSelectedMode = SP105EProtocol.modeNames.count - 1
+            selectedMode = SP105EProtocol.modeNames.count - 1
         }
     }
 
-    private func nextSP105EMode() {
-        if sp105eSelectedMode < SP105EProtocol.modeNames.count - 1 {
-            sp105eSelectedMode += 1
+    private func nextMode() {
+        if selectedMode < SP105EProtocol.modeNames.count - 1 {
+            selectedMode += 1
         } else {
-            sp105eSelectedMode = 1
+            selectedMode = 1
         }
     }
 
-    private func increaseSP105EBrightness() {
-        let oldBrightness = Int(sp105eBrightness)
-        sp105eBrightness = min(255, sp105eBrightness + 25)
-        groupManager.setBrightnessToSelected(selectedSP105EAddresses, brightness: Int(sp105eBrightness), lastBrightness: oldBrightness)
-        sp105eLastBrightness = Int(sp105eBrightness)
+    private func increaseBrightness() {
+        let oldBrightness = Int(brightness)
+        brightness = min(255, brightness + 25)
+        groupManager.setBrightnessAbsolute(Int(brightness), lastBrightness: oldBrightness, selectedOnly: selectedSP105EDevices)
+        lastBrightness = Int(brightness)
     }
 
-    private func decreaseSP105EBrightness() {
-        let oldBrightness = Int(sp105eBrightness)
-        sp105eBrightness = max(0, sp105eBrightness - 25)
-        groupManager.setBrightnessToSelected(selectedSP105EAddresses, brightness: Int(sp105eBrightness), lastBrightness: oldBrightness)
-        sp105eLastBrightness = Int(sp105eBrightness)
+    private func decreaseBrightness() {
+        let oldBrightness = Int(brightness)
+        brightness = max(0, brightness - 25)
+        groupManager.setBrightnessAbsolute(Int(brightness), lastBrightness: oldBrightness, selectedOnly: selectedSP105EDevices)
+        lastBrightness = Int(brightness)
     }
 
-    private func increaseSP105ESpeed() {
-        sp105eSpeed = min(255, sp105eSpeed + 25)
-        groupManager.increaseSpeedToSelected(selectedSP105EAddresses)
+    private func increaseSpeed() {
+        speed = min(255, speed + 25)
+        groupManager.increaseSpeed(selectedOnly: selectedSP105EDevices)
     }
 
-    private func decreaseSP105ESpeed() {
-        sp105eSpeed = max(0, sp105eSpeed - 25)
-        groupManager.decreaseSpeedToSelected(selectedSP105EAddresses)
+    private func decreaseSpeed() {
+        speed = max(0, speed - 25)
+        groupManager.decreaseSpeed(selectedOnly: selectedSP105EDevices)
     }
-}
 
-// MARK: - Checkbox Toggle Style
+    private func saveSP105EFavoriteMode(slot: Int) {
+        guard selectedMode > 0 else { return }
+        sp105eFavoriteModes[slot] = selectedMode
+    }
 
-struct CheckboxToggleStyle: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Button(action: {
-            configuration.isOn.toggle()
-        }) {
-            HStack {
-                Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
-                    .foregroundColor(configuration.isOn ? .orange : .gray)
-                    .font(.title3)
-                configuration.label
+    private func applySP105EFavoriteMode(slot: Int) {
+        guard sp105eFavoriteModes[slot] != -1 else { return }
+        stopModeCycling()
+        selectedMode = sp105eFavoriteModes[slot]
+        groupManager.setMode(selectedMode, selectedOnly: selectedSP105EDevices)
+    }
+
+    private func deleteSP105EFavoriteMode(slot: Int) {
+        sp105eFavoriteModes[slot] = -1
+    }
+
+    // Mode Cycling
+    private func toggleModeCycling() {
+        if isCycling {
+            stopModeCycling()
+        } else {
+            startModeCycling()
+        }
+    }
+
+    private func startModeCycling() {
+        isCycling = true
+        selectedMode = 1
+        groupManager.setMode(1, selectedOnly: selectedSP105EDevices)
+
+        cycleTimer = Timer.scheduledTimer(withTimeInterval: cycleInterval, repeats: true) { _ in
+            DispatchQueue.main.async {
+                if self.isCycling {
+                    self.nextMode()
+                    self.groupManager.setMode(self.selectedMode, selectedOnly: self.selectedSP105EDevices)
+                }
             }
         }
-        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func stopModeCycling() {
+        isCycling = false
+        cycleTimer?.invalidate()
+        cycleTimer = nil
     }
 }
 
-// MARK: - Safe Array Access
+// MARK: - Array Safe Subscript
 
 extension Array {
-    subscript(safe index: Index) -> Element? {
-        indices.contains(index) ? self[index] : nil
+    subscript(safe index: Int) -> Element? {
+        return indices.contains(index) ? self[index] : nil
     }
 }
 
@@ -898,38 +1011,36 @@ struct GroupControlHelpView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     helpSection(title: "GROUP CONTROL", content: """
-                        This screen lets you control devices in your group. Devices are separated by controller type:
+                        This screen lets you control all devices in the group. Controls only appear when ALL devices are connected.
+                        """)
 
-                        • DEMON EYE: BanlanX/SP63x controllers (color only)
-                        • LED STRIP CONTROLLERS: SP105E controllers (full control)
+                    helpSection(title: "DEMON EYE SECTION", content: """
+                        • Controls PWM LED devices (non-addressable)
+                        • Quick colors for instant color changes
+                        • Custom color wheel (tap Show to reveal)
+                        • Save up to 6 favorite colors
+                        • Select which devices receive commands
+                        """)
+
+                    helpSection(title: "LED STRIP SECTION", content: """
+                        • Controls addressable LED strip devices
+                        • Full color wheel always visible
+                        • 50+ effect modes with Auto Cycle
+                        • Brightness and speed controls
+                        • Save up to 6 favorite modes
+                        • Select which devices receive commands
                         """)
 
                     helpSection(title: "DEVICE SELECTION", content: """
-                        Each section has checkboxes at the bottom to select which devices receive commands.
-
-                        • By default, all devices are selected
-                        • Uncheck devices to exclude them from commands
-                        • Commands only go to checked devices
+                        • Each section has its own device checkboxes
+                        • Only checked devices receive commands
+                        • Uncheck devices to exclude them
                         """)
 
-                    helpSection(title: "FAVORITE COLORS (DEMON EYE)", content: """
-                        • Tap a favorite slot to apply that color
-                        • Long-press a slot to save the current color
-                        • Favorites are shared across all DEMON EYE devices in the group
-                        """)
+                    helpSection(title: "IMPORTANT", content: """
+                        ⚠️ Controls only appear when ALL devices are connected!
 
-                    helpSection(title: "FAVORITE MODES (LED STRIP)", content: """
-                        • Tap a favorite slot to apply that mode
-                        • Long-press a slot to save the current mode
-                        • Favorites are shared across all LED STRIP devices in the group
-                        """)
-
-                    helpSection(title: "IMPORTANT WARNINGS", content: """
-                        ⚠️ Maximum 4 devices per group recommended
-                        iOS has BLE connection limits. Groups with more than 4 devices may experience connection drops.
-
-                        ⚠️ Power button controls ALL devices
-                        The power button at the top affects all devices regardless of checkbox selections.
+                        ⚠️ Maximum 4 devices per group recommended due to iOS BLE limits.
                         """)
                 }
                 .padding()

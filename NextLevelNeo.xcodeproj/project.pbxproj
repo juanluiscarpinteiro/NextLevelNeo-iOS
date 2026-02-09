@@ -1,0 +1,457 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A1000001213456780001 /* NextLevelNeoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100001213456780001 /* NextLevelNeoApp.swift */; };
+		A1000002213456780001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100002213456780001 /* ContentView.swift */; };
+		A1000003213456780001 /* DeviceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100003213456780001 /* DeviceListView.swift */; };
+		A1000004213456780001 /* DeviceControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100004213456780001 /* DeviceControlView.swift */; };
+		A1000005213456780001 /* GroupListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100005213456780001 /* GroupListView.swift */; };
+		A1000006213456780001 /* GroupControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100006213456780001 /* GroupControlView.swift */; };
+		A1000007213456780001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100007213456780001 /* SettingsView.swift */; };
+		A1000008213456780001 /* HelpView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100008213456780001 /* HelpView.swift */; };
+		A1000009213456780001 /* ColorWheelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100009213456780001 /* ColorWheelView.swift */; };
+		A1000010213456780001 /* DeviceItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100010213456780001 /* DeviceItem.swift */; };
+		A1000011213456780001 /* DeviceGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100011213456780001 /* DeviceGroup.swift */; };
+		A1000012213456780001 /* BLEManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100012213456780001 /* BLEManager.swift */; };
+		A1000013213456780001 /* GroupConnectionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100013213456780001 /* GroupConnectionManager.swift */; };
+		A1000014213456780001 /* LEDProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100014213456780001 /* LEDProtocol.swift */; };
+		A1000015213456780001 /* SP105EProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100015213456780001 /* SP105EProtocol.swift */; };
+		A1000016213456780001 /* BanlanXProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100016213456780001 /* BanlanXProtocol.swift */; };
+		A1000017213456780001 /* DataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1100017213456780001 /* DataStore.swift */; };
+		A1000018213456780001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1100018213456780001 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A1100001213456780001 /* NextLevelNeoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NextLevelNeoApp.swift; sourceTree = "<group>"; };
+		A1100002213456780001 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A1100003213456780001 /* DeviceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceListView.swift; sourceTree = "<group>"; };
+		A1100004213456780001 /* DeviceControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceControlView.swift; sourceTree = "<group>"; };
+		A1100005213456780001 /* GroupListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupListView.swift; sourceTree = "<group>"; };
+		A1100006213456780001 /* GroupControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupControlView.swift; sourceTree = "<group>"; };
+		A1100007213456780001 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A1100008213456780001 /* HelpView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpView.swift; sourceTree = "<group>"; };
+		A1100009213456780001 /* ColorWheelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorWheelView.swift; sourceTree = "<group>"; };
+		A1100010213456780001 /* DeviceItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceItem.swift; sourceTree = "<group>"; };
+		A1100011213456780001 /* DeviceGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceGroup.swift; sourceTree = "<group>"; };
+		A1100012213456780001 /* BLEManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEManager.swift; sourceTree = "<group>"; };
+		A1100013213456780001 /* GroupConnectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupConnectionManager.swift; sourceTree = "<group>"; };
+		A1100014213456780001 /* LEDProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LEDProtocol.swift; sourceTree = "<group>"; };
+		A1100015213456780001 /* SP105EProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SP105EProtocol.swift; sourceTree = "<group>"; };
+		A1100016213456780001 /* BanlanXProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BanlanXProtocol.swift; sourceTree = "<group>"; };
+		A1100017213456780001 /* DataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStore.swift; sourceTree = "<group>"; };
+		A1100018213456780001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A1100019213456780001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A1200001213456780001 /* NextLevelNeo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NextLevelNeo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A1300001213456780001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A1400001213456780001 = {
+			isa = PBXGroup;
+			children = (
+				A1400002213456780001 /* NextLevelNeo */,
+				A1400003213456780001 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A1400002213456780001 /* NextLevelNeo */ = {
+			isa = PBXGroup;
+			children = (
+				A1400004213456780001 /* App */,
+				A1400005213456780001 /* Views */,
+				A1400007213456780001 /* Models */,
+				A1400008213456780001 /* Bluetooth */,
+				A1400009213456780001 /* Database */,
+				A1100018213456780001 /* Assets.xcassets */,
+				A1100019213456780001 /* Info.plist */,
+			);
+			path = NextLevelNeo;
+			sourceTree = "<group>";
+		};
+		A1400003213456780001 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A1200001213456780001 /* NextLevelNeo.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A1400004213456780001 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A1100001213456780001 /* NextLevelNeoApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A1400005213456780001 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				A1100002213456780001 /* ContentView.swift */,
+				A1100003213456780001 /* DeviceListView.swift */,
+				A1100004213456780001 /* DeviceControlView.swift */,
+				A1100005213456780001 /* GroupListView.swift */,
+				A1100006213456780001 /* GroupControlView.swift */,
+				A1100007213456780001 /* SettingsView.swift */,
+				A1100008213456780001 /* HelpView.swift */,
+				A1400006213456780001 /* Components */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		A1400006213456780001 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				A1100009213456780001 /* ColorWheelView.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		A1400007213456780001 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				A1100010213456780001 /* DeviceItem.swift */,
+				A1100011213456780001 /* DeviceGroup.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		A1400008213456780001 /* Bluetooth */ = {
+			isa = PBXGroup;
+			children = (
+				A1100012213456780001 /* BLEManager.swift */,
+				A1100013213456780001 /* GroupConnectionManager.swift */,
+				A1100014213456780001 /* LEDProtocol.swift */,
+				A1100015213456780001 /* SP105EProtocol.swift */,
+				A1100016213456780001 /* BanlanXProtocol.swift */,
+			);
+			path = Bluetooth;
+			sourceTree = "<group>";
+		};
+		A1400009213456780001 /* Database */ = {
+			isa = PBXGroup;
+			children = (
+				A1100017213456780001 /* DataStore.swift */,
+			);
+			path = Database;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A1500001213456780001 /* NextLevelNeo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1700001213456780001 /* Build configuration list for PBXNativeTarget "NextLevelNeo" */;
+			buildPhases = (
+				A1500002213456780001 /* Sources */,
+				A1300001213456780001 /* Frameworks */,
+				A1500003213456780001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NextLevelNeo;
+			productName = NextLevelNeo;
+			productReference = A1200001213456780001 /* NextLevelNeo.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A1600001213456780001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					A1500001213456780001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = A1700002213456780001 /* Build configuration list for PBXProject "NextLevelNeo" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A1400001213456780001;
+			productRefGroup = A1400003213456780001 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A1500001213456780001 /* NextLevelNeo */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A1500003213456780001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000018213456780001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A1500002213456780001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000001213456780001 /* NextLevelNeoApp.swift in Sources */,
+				A1000002213456780001 /* ContentView.swift in Sources */,
+				A1000003213456780001 /* DeviceListView.swift in Sources */,
+				A1000004213456780001 /* DeviceControlView.swift in Sources */,
+				A1000005213456780001 /* GroupListView.swift in Sources */,
+				A1000006213456780001 /* GroupControlView.swift in Sources */,
+				A1000007213456780001 /* SettingsView.swift in Sources */,
+				A1000008213456780001 /* HelpView.swift in Sources */,
+				A1000009213456780001 /* ColorWheelView.swift in Sources */,
+				A1000010213456780001 /* DeviceItem.swift in Sources */,
+				A1000011213456780001 /* DeviceGroup.swift in Sources */,
+				A1000012213456780001 /* BLEManager.swift in Sources */,
+				A1000013213456780001 /* GroupConnectionManager.swift in Sources */,
+				A1000014213456780001 /* LEDProtocol.swift in Sources */,
+				A1000015213456780001 /* SP105EProtocol.swift in Sources */,
+				A1000016213456780001 /* BanlanXProtocol.swift in Sources */,
+				A1000017213456780001 /* DataStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A1800001213456780001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A1800002213456780001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A1800003213456780001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = GG2HCT6QP4;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NextLevelNeo/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "NLN Flow Controller";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nextlevelneo.flowcontroller;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A1800004213456780001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = GG2HCT6QP4;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NextLevelNeo/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "NLN Flow Controller";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nextlevelneo.flowcontroller;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A1700001213456780001 /* Build configuration list for PBXNativeTarget "NextLevelNeo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1800003213456780001 /* Debug */,
+				A1800004213456780001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1700002213456780001 /* Build configuration list for PBXProject "NextLevelNeo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1800001213456780001 /* Debug */,
+				A1800002213456780001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A1600001213456780001 /* Project object */;
+}

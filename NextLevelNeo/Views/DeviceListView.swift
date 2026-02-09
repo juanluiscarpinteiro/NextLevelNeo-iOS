@@ -33,10 +33,13 @@ struct DeviceListView: View {
         }
         .navigationBarHidden(true)
         .sheet(isPresented: $showingScannedDevices) {
-            ScanResultsView(onDeviceSelected: { peripheral in
-                addDevice(peripheral)
-                showingScannedDevices = false
-            })
+            ScanResultsView(
+                savedDeviceAddresses: Set(dataStore.devices.map { $0.address }),
+                onDeviceSelected: { peripheral in
+                    addDevice(peripheral)
+                    showingScannedDevices = false
+                }
+            )
             .environmentObject(bleManager)
         }
     }
@@ -44,11 +47,13 @@ struct DeviceListView: View {
     // MARK: - Header
 
     private var headerView: some View {
-        VStack(spacing: 8) {
-            Image("next_level_neo_logo")
+        VStack(spacing: 12) {
+            Image("next_level_neo_logo_scanner")
                 .resizable()
                 .scaledToFit()
-                .frame(height: 60)
+                .frame(maxWidth: .infinity)
+                .frame(height: 120)
+                .padding(.horizontal, 20)
 
             Link("www.NEXTLEVELNEO.com", destination: URL(string: "https://www.nextlevelneo.com")!)
                 .font(.footnote.bold())
@@ -216,7 +221,15 @@ struct ScanResultsView: View {
     @EnvironmentObject var bleManager: BLEManager
     @Environment(\.dismiss) var dismiss
 
+    let savedDeviceAddresses: Set<String>
     let onDeviceSelected: (CBPeripheral) -> Void
+
+    /// Filter out already saved devices
+    private var newPeripherals: [CBPeripheral] {
+        bleManager.discoveredPeripherals.filter { peripheral in
+            !savedDeviceAddresses.contains(peripheral.identifier.uuidString)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -230,12 +243,19 @@ struct ScanResultsView: View {
                             .padding()
                     }
 
-                    if bleManager.discoveredPeripherals.isEmpty && !bleManager.isScanning {
-                        Text("No devices found")
-                            .foregroundColor(.gray)
-                            .padding()
+                    if newPeripherals.isEmpty && !bleManager.isScanning {
+                        VStack(spacing: 8) {
+                            Text("No new devices found")
+                                .foregroundColor(.gray)
+                            if !bleManager.discoveredPeripherals.isEmpty {
+                                Text("(\(bleManager.discoveredPeripherals.count) already saved)")
+                                    .font(.caption)
+                                    .foregroundColor(.gray.opacity(0.7))
+                            }
+                        }
+                        .padding()
                     } else {
-                        List(bleManager.discoveredPeripherals, id: \.identifier) { peripheral in
+                        List(newPeripherals, id: \.identifier) { peripheral in
                             Button(action: {
                                 onDeviceSelected(peripheral)
                             }) {

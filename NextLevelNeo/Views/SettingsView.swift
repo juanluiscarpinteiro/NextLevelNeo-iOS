@@ -28,7 +28,7 @@ struct SettingsView: View {
                         }
                         .pickerStyle(.segmented)
                         .listRowBackground(Color(hex: "252525"))
-                        .onChange(of: selectedColorOrder) { _, newValue in
+                        .onChange(of: selectedColorOrder) { newValue in
                             applyStripType(newValue)
                         }
                     } header: {

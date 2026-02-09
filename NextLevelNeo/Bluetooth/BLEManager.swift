@@ -67,6 +67,59 @@ class BLEManager: NSObject, ObservableObject {
         }
     }
 
+    /// Connect to a known device by its UUID string
+    func connectToDevice(address: String) {
+        guard isBluetoothOn else {
+            print("Bluetooth is not available")
+            connectionState = .failed("Bluetooth is off")
+            return
+        }
+
+        guard let uuid = UUID(uuidString: address) else {
+            print("Invalid device address: \(address)")
+            connectionState = .failed("Invalid device address")
+            return
+        }
+
+        connectionState = .connecting
+
+        // Try to retrieve the peripheral directly by its identifier
+        let peripherals = centralManager.retrievePeripherals(withIdentifiers: [uuid])
+
+        if let peripheral = peripherals.first {
+            print("Found known peripheral: \(peripheral.name ?? "Unknown")")
+            connect(to: peripheral)
+        } else {
+            // Peripheral not found in cache, need to scan for it
+            print("Peripheral not in cache, scanning...")
+            startScanningForDevice(address: address)
+        }
+    }
+
+    /// Start scanning specifically to find and connect to a device
+    private var targetDeviceAddress: String?
+
+    private func startScanningForDevice(address: String) {
+        guard isBluetoothOn else { return }
+
+        targetDeviceAddress = address
+        discoveredPeripherals.removeAll()
+        isScanning = true
+        centralManager.scanForPeripherals(withServices: nil, options: [
+            CBCentralManagerScanOptionAllowDuplicatesKey: false
+        ])
+
+        // Timeout after 15 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            guard let self = self else { return }
+            if self.isScanning && self.connectionState == .connecting {
+                self.stopScanning()
+                self.connectionState = .failed("Device not found")
+                self.targetDeviceAddress = nil
+            }
+        }
+    }
+
     /// Stop scanning
     func stopScanning() {
         centralManager.stopScan()
@@ -254,6 +307,14 @@ extension BLEManager: CBCentralManagerDelegate {
         if !discoveredPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
             print("Discovered: \(peripheral.name ?? "Unknown") - \(peripheral.identifier)")
             discoveredPeripherals.append(peripheral)
+
+            // If we're looking for a specific device, connect to it
+            if let targetAddress = targetDeviceAddress,
+               peripheral.identifier.uuidString == targetAddress {
+                print("Found target device, connecting...")
+                targetDeviceAddress = nil
+                connect(to: peripheral)
+            }
         }
     }
 

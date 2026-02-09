@@ -20,8 +20,10 @@ class GroupConnectionManager: NSObject, ObservableObject {
     private var deviceProtocols: [String: LEDProtocol] = [:]     // identifier -> protocol
     private var deviceTypes: [String: ControllerType] = [:]      // identifier -> controller type
     private var pendingConnections: [CBPeripheral] = []
+    private var pendingDevices: [DeviceItem] = []                // Devices waiting to be found via scan
     private var connectionDelayMs: Double = 300  // Delay between connection attempts (increased for reliability)
     private var commandDelayMs: Double = 50      // Delay between sending to each device
+    private var isScanning = false
 
     // MARK: - Initialization
 
@@ -38,10 +40,11 @@ class GroupConnectionManager: NSObject, ObservableObject {
 
         totalCount = devices.count
         connectedCount = 0
+        pendingDevices = devices
 
         // Initialize connection states and protocols
         for device in devices {
-            connectionStates[device.address] = .disconnected
+            connectionStates[device.address] = .connecting
             // Re-detect controller type (in case device was saved with wrong type)
             let detectedType = LEDProtocolFactory.detectControllerType(deviceName: device.deviceName)
             deviceTypes[device.address] = detectedType
@@ -49,21 +52,86 @@ class GroupConnectionManager: NSObject, ObservableObject {
             print("[GroupManager] Device \(device.displayName) using \(deviceProtocols[device.address]?.name ?? "unknown") protocol")
         }
 
-        // Find matching peripherals and queue for connection
+        // First, try to retrieve peripherals directly from system cache
         for device in devices {
-            if let peripheral = knownPeripherals.first(where: { $0.identifier.uuidString == device.address }) {
+            if let uuid = UUID(uuidString: device.address) {
+                let cachedPeripherals = centralManager.retrievePeripherals(withIdentifiers: [uuid])
+                if let peripheral = cachedPeripherals.first {
+                    print("[GroupManager] Found \(device.displayName) in system cache")
+                    pendingConnections.append(peripheral)
+                    peripherals[device.address] = peripheral
+                }
+            }
+        }
+
+        // Also check known peripherals passed in
+        for device in devices {
+            if peripherals[device.address] == nil,
+               let peripheral = knownPeripherals.first(where: { $0.identifier.uuidString == device.address }) {
+                print("[GroupManager] Found \(device.displayName) in known peripherals")
                 pendingConnections.append(peripheral)
                 peripherals[device.address] = peripheral
             }
         }
 
-        // Start connecting sequentially
-        connectNextDevice()
+        // Check if we still have devices that weren't found
+        let foundAddresses = Set(peripherals.keys)
+        let missingDevices = devices.filter { !foundAddresses.contains($0.address) }
+
+        if !missingDevices.isEmpty {
+            print("[GroupManager] \(missingDevices.count) device(s) not in cache, starting scan...")
+            pendingDevices = missingDevices
+            startScanningForDevices()
+        } else {
+            pendingDevices = []
+        }
+
+        // Start connecting devices we already found
+        if !pendingConnections.isEmpty {
+            connectNextDevice()
+        }
+    }
+
+    /// Start scanning for devices not found in cache
+    private func startScanningForDevices() {
+        guard isBluetoothOn, !pendingDevices.isEmpty else { return }
+
+        isScanning = true
+        centralManager.scanForPeripherals(withServices: nil, options: [
+            CBCentralManagerScanOptionAllowDuplicatesKey: false
+        ])
+
+        // Timeout after 15 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            self?.stopScanning()
+        }
+    }
+
+    /// Stop scanning
+    private func stopScanning() {
+        guard isScanning else { return }
+        isScanning = false
+        centralManager.stopScan()
+
+        // Mark any still-missing devices as failed
+        for device in pendingDevices {
+            if peripherals[device.address] == nil {
+                connectionStates[device.address] = .failed("Device not found")
+            }
+        }
+        pendingDevices = []
     }
 
     /// Disconnect from all devices
     func disconnectAll() {
+        // Stop scanning if active
+        if isScanning {
+            centralManager.stopScan()
+            isScanning = false
+        }
+
         pendingConnections.removeAll()
+        pendingDevices.removeAll()
 
         for (_, peripheral) in peripherals {
             centralManager.cancelPeripheralConnection(peripheral)
@@ -85,15 +153,31 @@ class GroupConnectionManager: NSObject, ObservableObject {
 
     /// Send command to all connected devices (protocol-specific)
     /// Uses commandGenerator to create appropriate command for each device's protocol
-    func sendProtocolCommandToAll(_ commandGenerator: (LEDProtocol) -> Data?) {
+    /// - Parameters:
+    ///   - commandGenerator: Closure that generates the command data for a given protocol
+    ///   - selectedOnly: Optional set of device addresses to send to (nil = all connected devices)
+    func sendProtocolCommandToAll(_ commandGenerator: (LEDProtocol) -> Data?, selectedOnly: Set<String>? = nil) {
         var delay: Double = 0
+        var sentCount = 0
+
+        print("[GroupManager] sendProtocolCommandToAll - characteristics count: \(characteristics.count), selectedOnly: \(selectedOnly?.count ?? -1)")
 
         for (identifier, characteristic) in characteristics {
+            print("[GroupManager] Checking device \(identifier.prefix(8))... peripheral: \(peripherals[identifier] != nil), protocol: \(deviceProtocols[identifier] != nil), state: \(connectionStates[identifier] ?? .disconnected)")
+
             guard let peripheral = peripherals[identifier],
                   let deviceProtocol = deviceProtocols[identifier],
-                  connectionStates[identifier] == .connected else { continue }
+                  connectionStates[identifier] == .connected else {
+                print("[GroupManager] Skipping \(identifier.prefix(8)) - not ready")
+                continue
+            }
 
-            let deviceType = deviceTypes[identifier] ?? .sp105e
+            // Skip if we have a filter and this device isn't selected
+            if let selected = selectedOnly, !selected.contains(identifier) {
+                print("[GroupManager] Skipping \(identifier.prefix(8)) - not in selectedOnly")
+                continue
+            }
+
             let writeType: CBCharacteristicWriteType = deviceProtocol.usesWriteWithoutResponse ? .withoutResponse : .withResponse
 
             // Generate command for this device's protocol
@@ -102,6 +186,7 @@ class GroupConnectionManager: NSObject, ObservableObject {
                 continue
             }
 
+            sentCount += 1
             DispatchQueue.main.asyncAfter(deadline: .now() + delay / 1000) {
                 let hexString = command.map { String(format: "%02X", $0) }.joined(separator: " ")
                 print("[GroupManager] Sending to \(peripheral.name ?? "Unknown") (\(deviceProtocol.name)): \(hexString)")
@@ -109,6 +194,8 @@ class GroupConnectionManager: NSObject, ObservableObject {
             }
             delay += commandDelayMs
         }
+
+        print("[GroupManager] Sent commands to \(sentCount) devices")
     }
 
     /// Send same raw command to all devices (legacy, for backward compatibility)
@@ -131,75 +218,82 @@ class GroupConnectionManager: NSObject, ObservableObject {
 
     // MARK: - Convenience Command Methods (Protocol-aware)
 
-    func setColor(red: Int, green: Int, blue: Int) {
-        sendProtocolCommandToAll { protocol in
-            protocol.setColor(red: UInt8(red), green: UInt8(green), blue: UInt8(blue))
-        }
+    func setColor(red: Int, green: Int, blue: Int, selectedOnly: Set<String>? = nil) {
+        sendProtocolCommandToAll({ ledProtocol in
+            ledProtocol.setColor(red: UInt8(red), green: UInt8(green), blue: UInt8(blue))
+        }, selectedOnly: selectedOnly)
     }
 
-    func setMode(_ mode: Int) {
-        sendProtocolCommandToAll { protocol in
-            protocol.setMode(mode)
-        }
+    func setMode(_ mode: Int, selectedOnly: Set<String>? = nil) {
+        sendProtocolCommandToAll({ ledProtocol in
+            ledProtocol.setMode(mode)
+        }, selectedOnly: selectedOnly)
     }
 
-    func increaseBrightness() {
-        sendProtocolCommandToAll { protocol in
-            protocol.brightnessUp()
-        }
+    func increaseBrightness(selectedOnly: Set<String>? = nil) {
+        sendProtocolCommandToAll({ ledProtocol in
+            ledProtocol.brightnessUp()
+        }, selectedOnly: selectedOnly)
     }
 
-    func decreaseBrightness() {
-        sendProtocolCommandToAll { protocol in
-            protocol.brightnessDown()
-        }
+    func decreaseBrightness(selectedOnly: Set<String>? = nil) {
+        sendProtocolCommandToAll({ ledProtocol in
+            ledProtocol.brightnessDown()
+        }, selectedOnly: selectedOnly)
     }
 
-    /// Set absolute brightness for all devices (BanlanX uses absolute, SP105E uses step-based)
-    func setBrightnessAbsolute(_ brightness: Int, lastBrightness: Int) {
-        sendProtocolCommandToAll { protocol in
-            if let banlanx = protocol as? BanlanXProtocol {
+    /// Set absolute brightness for devices (PWM uses absolute, SP105E uses step-based)
+    func setBrightnessAbsolute(_ brightness: Int, lastBrightness: Int, selectedOnly: Set<String>? = nil) {
+        sendProtocolCommandToAll({ ledProtocol in
+            if let banlanx = ledProtocol as? BanlanXProtocol {
                 return banlanx.setBrightnessAbsolute(brightness)
             } else {
                 // SP105E uses step-based
                 if brightness > lastBrightness {
-                    return protocol.brightnessUp()
+                    return ledProtocol.brightnessUp()
                 } else if brightness < lastBrightness {
-                    return protocol.brightnessDown()
+                    return ledProtocol.brightnessDown()
                 }
                 return nil
             }
-        }
+        }, selectedOnly: selectedOnly)
     }
 
-    func increaseSpeed() {
-        sendProtocolCommandToAll { protocol in
-            protocol.speedUp()
-        }
+    func increaseSpeed(selectedOnly: Set<String>? = nil) {
+        sendProtocolCommandToAll({ ledProtocol in
+            ledProtocol.speedUp()
+        }, selectedOnly: selectedOnly)
     }
 
-    func decreaseSpeed() {
-        sendProtocolCommandToAll { protocol in
-            protocol.speedDown()
-        }
+    func decreaseSpeed(selectedOnly: Set<String>? = nil) {
+        sendProtocolCommandToAll({ ledProtocol in
+            ledProtocol.speedDown()
+        }, selectedOnly: selectedOnly)
     }
 
-    func togglePower() {
-        sendProtocolCommandToAll { protocol in
-            protocol.powerToggle()
-        }
+    func togglePower(turnOn: Bool, selectedOnly: Set<String>? = nil) {
+        print("[GroupManager] togglePower called - turnOn: \(turnOn), connected: \(connectedCount), characteristics: \(characteristics.count)")
+        sendProtocolCommandToAll({ ledProtocol in
+            if turnOn {
+                print("[GroupManager] Generating powerOn command for \(ledProtocol.name)")
+                return ledProtocol.powerOn()
+            } else {
+                print("[GroupManager] Generating powerOff command for \(ledProtocol.name)")
+                return ledProtocol.powerOff()
+            }
+        }, selectedOnly: selectedOnly)
     }
 
-    func powerOn() {
-        sendProtocolCommandToAll { protocol in
-            protocol.powerOn()
-        }
+    func powerOn(selectedOnly: Set<String>? = nil) {
+        sendProtocolCommandToAll({ ledProtocol in
+            ledProtocol.powerOn()
+        }, selectedOnly: selectedOnly)
     }
 
-    func powerOff() {
-        sendProtocolCommandToAll { protocol in
-            protocol.powerOff()
-        }
+    func powerOff(selectedOnly: Set<String>? = nil) {
+        sendProtocolCommandToAll({ ledProtocol in
+            ledProtocol.powerOff()
+        }, selectedOnly: selectedOnly)
     }
 
     // MARK: - Private Methods
@@ -239,6 +333,32 @@ extension GroupConnectionManager: CBCentralManagerDelegate {
 
         if central.state != .poweredOn {
             disconnectAll()
+        }
+    }
+
+    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
+                        advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        // Check if this is one of our pending devices
+        let identifier = peripheral.identifier.uuidString
+
+        if let deviceIndex = pendingDevices.firstIndex(where: { $0.address == identifier }) {
+            let device = pendingDevices[deviceIndex]
+            print("[GroupManager] Found \(device.displayName) via scan")
+
+            // Store peripheral and queue for connection
+            peripherals[identifier] = peripheral
+            pendingConnections.append(peripheral)
+            pendingDevices.remove(at: deviceIndex)
+
+            // Start connecting if this is the first one found
+            if pendingConnections.count == 1 {
+                connectNextDevice()
+            }
+
+            // Stop scanning if we found all devices
+            if pendingDevices.isEmpty {
+                stopScanning()
+            }
         }
     }
 
